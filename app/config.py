@@ -4,7 +4,7 @@ import socket
 
 class Settings:
     HOST: str = os.environ.get("HOST", "0.0.0.0")
-    PORT: int = int(os.environ.get("PORT", "8080"))
+    PORT: int = int(os.environ.get("PORT", "1919"))
     PUBLIC_HOST: str = os.environ.get("PUBLIC_HOST", "")
     CREDENTIAL_FILE: str = os.environ.get("CREDENTIAL_FILE", "data/credentials.json")
     EXTRACT_TIMEOUT_S: int = int(os.environ.get("EXTRACT_TIMEOUT_S", "45"))

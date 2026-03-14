@@ -36,7 +36,7 @@ The app displays a dark, card-based UI with team logos and game times. On mobile
    docker compose up -d
    ```
 
-3. Open `http://<your-server-ip>:8080` in your browser.
+3. Open `http://<your-server-ip>:1919` in your browser.
 
 ### Option 2: Docker Run
 
@@ -48,7 +48,7 @@ docker run -d \
   ghcr.io/tom-enns/myowntvapp:latest
 ```
 
-> **Note:** `--network host` is required for Apple TV discovery (mDNS) and so the Apple TV can reach the proxy server. If you don't need AirPlay casting, you can use `-p 8080:8080` instead.
+> **Note:** `--network host` is required for Apple TV discovery (mDNS) and so the Apple TV can reach the proxy server. If you don't need AirPlay casting, you can use `-p 1919:1919` instead.
 
 ### Option 3: Pull from GitHub Container Registry
 
@@ -71,7 +71,7 @@ docker pull ghcr.io/tom-enns/myowntvapp:latest
 | **Name** | `myowntvapp` |
 | **Repository** | `ghcr.io/tom-enns/myowntvapp:latest` |
 | **Network Type** | `host` |
-| **WebUI** | `http://[IP]:[PORT:8080]` |
+| **WebUI** | `http://[IP]:[PORT:1919]` |
 
 4. Add a **Path** mapping:
 
@@ -80,7 +80,7 @@ docker pull ghcr.io/tom-enns/myowntvapp:latest
 | `/app/data` | `/mnt/user/appdata/myowntvapp` | App data (credentials) |
 
 5. Click **Apply**
-6. Access the app at `http://<unraid-ip>:8080`
+6. Access the app at `http://<unraid-ip>:1919`
 
 ### Using Docker Compose on Unraid
 
@@ -109,8 +109,8 @@ services:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `HOST` | `0.0.0.0` | Bind address |
-| `PORT` | `8080` | Server port |
-| `PUBLIC_HOST` | auto-detect | Public host:port for stream URLs (e.g. `192.168.1.50:8080`) |
+| `PORT` | `1919` | Server port |
+| `PUBLIC_HOST` | auto-detect | Public host:port for stream URLs (e.g. `192.168.1.50:1919`) |
 | `CREDENTIAL_FILE` | `data/credentials.json` | Path to AirPlay credentials file |
 | `EXTRACT_TIMEOUT_S` | `45` | Stream extraction timeout in seconds |
 | `FFMPEG_BIN` | auto-detect | Path to ffmpeg binary |
@@ -125,7 +125,7 @@ services:
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-uvicorn app.main:app --host 0.0.0.0 --port 8080
+uvicorn app.main:app --host 0.0.0.0 --port 1919
 ```
 
 Requires `ffmpeg` installed locally (`brew install ffmpeg` on macOS).

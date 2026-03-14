@@ -13,6 +13,6 @@ services:
     # On Mac (Docker Desktop doesn't support network_mode: host):
     # Comment out network_mode: host and uncomment below:
     # ports:
-    #   - "8080:8080"
+    #   - "1919:1919"
     # environment:
-    #   - PUBLIC_HOST=YOUR_MAC_IP:8080
+    #   - PUBLIC_HOST=YOUR_MAC_IP:1919
