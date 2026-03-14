@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "MyOwnTVApp (uvicorn)",
+      "runtimeExecutable": "/Users/tomenns/localsoftware/myowntvapp/venv/bin/python3.10",
+      "runtimeArgs": ["-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"],
+      "port": 8080
+    }
+  ]
+}

@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MyOwnTVApp</title>
+    <link rel="stylesheet" href="/static/style.css?v=4">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-left">
+            <h1 class="logo">MyOwn<span>TV</span>App</h1>
+            <div class="categories">
+                <button class="cat-btn active" data-cat="nba">NBA</button>
+                <button class="cat-btn" data-cat="mlb">MLB</button>
+                <button class="cat-btn" data-cat="nhl">NHL</button>
+                <button class="cat-btn" data-cat="nfl">NFL</button>
+                <button class="cat-btn" data-cat="ncaaf">NCAAF</button>
+                <button class="cat-btn" data-cat="ncaab">NCAAB</button>
+                <button class="cat-btn" data-cat="soccer">Soccer</button>
+                <button class="cat-btn" data-cat="ppv">PPV</button>
+                <button class="cat-btn" data-cat="tv">Live TV</button>
+            </div>
+        </div>
+        <div class="nav-right">
+            <button id="stop-cast-btn" class="stop-cast-btn hidden" onclick="stopCasting()">
+                Stop Casting
+            </button>
+            <button id="discover-btn" class="icon-btn" onclick="discoverDevices()">
+                Cast Devices <span id="device-count" class="badge">0</span>
+            </button>
+        </div>
+    </nav>
+
+    <!-- Hidden Local Player overlay -->
+    <div id="local-player-container" class="player-overlay hidden">
+        <div class="player-header">
+            <h2 id="player-title">Now Playing</h2>
+            <button class="close-btn" onclick="closeLocalPlayer()">×</button>
+        </div>
+        <div class="video-wrapper">
+            <video id="video-player" controls autoplay playsinline x-webkit-airplay="allow"></video>
+        </div>
+        <div class="player-controls">
+            <button onclick="copyStreamUrl()" class="secondary">Copy M3U8 Link</button>
+        </div>
+    </div>
+
+    <main class="dashboard">
+        <!-- Devices Dropdown (Hidden initially) -->
+        <div id="devices-panel" class="devices-panel hidden">
+            <h3>Available Devices</h3>
+            <div id="device-list"></div>
+            <div id="device-status" class="status hidden"></div>
+        </div>
+
+        <!-- Featured Section Placeholder (Optional) -->
+        <div class="hero-section" id="hero-section">
+            <div class="hero-content">
+                <span class="live-badge">LIVE NOW</span>
+                <h2 id="hero-title">Select a category to view live games</h2>
+                <div class="hero-actions">
+                    <button id="hero-play-btn" class="primary-btn hidden" onclick="playHeroStream()">Watch Now</button>
+                </div>
+            </div>
+            <div class="hero-bg"></div>
+        </div>
+
+        <div class="streams-header">
+            <h2 id="category-title">Live NBA Games</h2>
+            <div id="loading-spinner" class="spinner hidden"></div>
+        </div>
+
+        <div id="status-log" class="status-log hidden"></div>
+
+        <div id="streams-grid" class="streams-grid">
+            <!-- Cards injected by JS -->
+        </div>
+        <div id="streams-error" class="status error hidden"></div>
+    </main>
+
+    <!-- Apple TV Casting Status Notification -->
+    <div id="global-cast-status" class="cast-notification hidden">
+        <div class="cast-notification-content">
+            <div class="spinner"></div>
+            <span id="cast-status-text">Connecting to Apple TV...</span>
+        </div>
+    </div>
+
+    <!-- Pairing Dialog -->
+    <div id="pair-dialog" class="modal hidden">
+        <div class="modal-content glass-panel">
+            <h3>Apple TV Pairing</h3>
+            <p>Enter the 4-digit PIN shown on your Apple TV screen:</p>
+            <input type="text" id="pair-pin" placeholder="0000" maxlength="4" />
+            <div id="pair-status" class="status hidden"></div>
+            <div class="modal-buttons">
+                <button class="primary-btn" onclick="finishPairing()">Submit PIN</button>
+                <button class="secondary-btn" onclick="closePairDialog()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js?v=4"></script>
+</body>
+</html>
