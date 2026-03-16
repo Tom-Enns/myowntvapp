@@ -5,8 +5,10 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
 from app.config import settings
+from app.models import SportEvent
 from app.services.airplay import AirPlayService
 from app.routes.proxy import sessions
+from app.services.extractor import StreamInfo
 
 router = APIRouter()
 airplay_service = AirPlayService(settings.CREDENTIAL_FILE)
@@ -14,6 +16,19 @@ airplay_service = AirPlayService(settings.CREDENTIAL_FILE)
 
 class ExtractRequest(BaseModel):
     url: str
+
+
+class ResolveRequest(BaseModel):
+    """New: resolve a stream for an event using the backend registry."""
+    event_id: str
+    title: str
+    category: str
+    home_team: str | None = None
+    away_team: str | None = None
+    home_logo: str | None = None
+    away_logo: str | None = None
+    # Optional: force a specific backend
+    backend_id: str | None = None
 
 
 class CastRequest(BaseModel):
@@ -34,16 +49,70 @@ async def list_devices():
 
 @router.get("/sports/{category}")
 async def list_sports_category(category: str, request: Request):
+    """Fetch events from the schedule registry (backend-agnostic)."""
     try:
-        scraper = request.app.state.scraper
-        events = await scraper.scrape_category(category)
-        return {"events": [ev.model_dump() for ev in events]}
+        schedule_registry = request.app.state.schedule_registry
+        events = await schedule_registry.get_events(category)
+        return {"events": [ev.model_dump(mode="json") for ev in events]}
     except Exception as e:
         return {"error": f"Failed to fetch category {category}: {str(e)}"}
 
 
+@router.post("/resolve")
+async def resolve_stream(body: ResolveRequest, request: Request):
+    """Resolve a stream for an event using the backend registry with fallback."""
+    backend_registry = request.app.state.backend_registry
+
+    event = SportEvent(
+        event_id=body.event_id,
+        title=body.title,
+        category=body.category,
+        home_team=body.home_team,
+        away_team=body.away_team,
+        home_logo=body.home_logo,
+        away_logo=body.away_logo,
+    )
+
+    if body.backend_id:
+        # Try a specific backend
+        backend = backend_registry.get_backend(body.backend_id)
+        if not backend:
+            return {"error": f"Unknown backend: {body.backend_id}"}
+        try:
+            stream = await backend.resolve_stream(event)
+            if not stream:
+                return {"error": f"Backend {backend.display_name} found no stream"}
+        except Exception as e:
+            return {"error": f"Backend {backend.display_name} failed: {str(e)}"}
+    else:
+        # Try all backends in priority order
+        stream = await backend_registry.resolve_best(event)
+        if not stream:
+            return {"error": "No backend could resolve a stream for this event"}
+
+    session_id = str(uuid.uuid4())
+    sessions[session_id] = StreamInfo(
+        m3u8_url=stream.m3u8_url,
+        headers=stream.headers,
+        cookies=stream.cookies,
+    )
+
+    public_host = settings.get_public_host(request.url.port)
+    proxy_url = f"http://{public_host}/proxy/playlist/{session_id}"
+
+    return {
+        "session_id": session_id,
+        "proxy_url": proxy_url,
+        "original_m3u8": stream.m3u8_url,
+        "backend_id": stream.backend_id,
+        "backend_name": stream.backend_name,
+        "qualities": [q.model_dump(mode="json") for q in stream.qualities],
+    }
+
+
 @router.post("/extract")
 async def extract_stream(body: ExtractRequest, request: Request):
+    """Legacy extract endpoint — still works for direct URL extraction."""
     extractor = request.app.state.extractor
     try:
         stream_info = await extractor.extract(body.url, timeout_s=settings.EXTRACT_TIMEOUT_S)
@@ -65,6 +134,46 @@ async def extract_stream(body: ExtractRequest, request: Request):
     }
 
 
+# ---- Backend Management ----
+
+@router.get("/backends")
+async def list_backends(request: Request):
+    """List registered stream backends in priority order."""
+    registry = request.app.state.backend_registry
+    return {"backends": registry.list_backends(), "priority": registry.get_priority()}
+
+
+@router.put("/backends/priority")
+async def set_backend_priority(body: dict, request: Request):
+    """Set backend priority order. Body: {"priority": ["thetvapp", "other"]}"""
+    registry = request.app.state.backend_registry
+    priority = body.get("priority", [])
+    registry.set_priority(priority)
+    return {"priority": registry.get_priority()}
+
+
+@router.get("/backends/{backend_id}/health")
+async def backend_health(backend_id: str, request: Request):
+    """Check if a specific backend is reachable."""
+    registry = request.app.state.backend_registry
+    backend = registry.get_backend(backend_id)
+    if not backend:
+        return {"error": "Unknown backend"}
+    healthy = await backend.health_check()
+    return {"backend_id": backend_id, "healthy": healthy}
+
+
+# ---- Schedule Provider Management ----
+
+@router.get("/schedule/providers")
+async def list_schedule_providers(request: Request):
+    """List registered schedule providers."""
+    registry = request.app.state.schedule_registry
+    return {"providers": registry.list_providers()}
+
+
+# ---- Casting (unchanged) ----
+
 @router.post("/cast")
 async def cast_to_device(body: CastRequest, request: Request):
     stream_info = sessions.get(body.session_id)
@@ -73,8 +182,6 @@ async def cast_to_device(body: CastRequest, request: Request):
 
     public_host = settings.get_public_host(request.url.port)
 
-    # Start ffmpeg reading the ORIGINAL m3u8 directly from the CDN
-    # (bypasses our proxy URLs which confuse ffmpeg's HLS extension parser)
     transcoder = request.app.state.transcoder
     try:
         print(f"[cast] Starting ffmpeg remux for session {body.session_id[:8]}...")
@@ -88,12 +195,9 @@ async def cast_to_device(body: CastRequest, request: Request):
         print(f"[cast] Remux failed: {e}")
         return {"error": f"Failed to prepare stream for Apple TV: {e}"}
 
-    # Send the remuxed URL to Apple TV (uses LAN IP so Apple TV can reach it)
     remux_url = f"http://{public_host}/proxy/remux/{body.session_id}/stream.m3u8"
     print(f"[cast] Sending remuxed URL to Apple TV: {remux_url}")
 
-    # Run cast in background — play_url now keeps the timing server alive
-    # for the duration of playback (blocks for hours), so we can't await it
     async def _do_cast():
         try:
             await airplay_service.cast(body.device_id, remux_url)
@@ -101,8 +205,6 @@ async def cast_to_device(body: CastRequest, request: Request):
             print(f"[cast] AirPlay error: {e}")
 
     asyncio.create_task(_do_cast())
-
-    # Give pyatv a moment to send the play command before returning
     await asyncio.sleep(3)
 
     return {"status": "casting", "url": remux_url}
@@ -150,7 +252,6 @@ async def finish_pairing(body: PairFinishRequest):
         return {"error": str(e)}
 
     if result == "more":
-        # Need to pair another protocol — auto-start it
         try:
             await airplay_service.start_pairing(body.device_id)
             return {"status": "more_pairing", "message": "First protocol paired! Enter the NEW PIN shown on your TV for the second pairing."}

@@ -530,3 +530,153 @@ video {
     display: flex;
     justify-content: center;
 }
+
+/* Player Badges (quality, backend) */
+.player-badges {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.badge-pill {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+}
+.backend-badge {
+    background: rgba(10, 132, 255, 0.2);
+    color: var(--accent);
+    border: 1px solid rgba(10, 132, 255, 0.3);
+}
+.quality-badge {
+    background: rgba(48, 209, 88, 0.2);
+    color: #30d158;
+    border: 1px solid rgba(48, 209, 88, 0.3);
+}
+.bitrate-badge {
+    background: rgba(255, 159, 10, 0.2);
+    color: #ff9f0a;
+    border: 1px solid rgba(255, 159, 10, 0.3);
+}
+
+/* Backends Panel */
+.backends-panel {
+    position: absolute;
+    top: 70px;
+    right: 160px;
+    background: rgba(20, 20, 20, 0.95);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    padding: 20px;
+    width: 320px;
+    z-index: 100;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.8);
+}
+.backends-panel h3 {
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+}
+.panel-hint {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-bottom: 12px;
+}
+.backend-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 8px;
+    margin-bottom: 6px;
+    border: 1px solid transparent;
+}
+.backend-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.backend-rank {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--accent);
+    min-width: 20px;
+}
+.backend-name {
+    font-size: 14px;
+    font-weight: 500;
+}
+.backend-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.small-btn {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-muted);
+    border: none;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.small-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+    color: var(--text-main);
+}
+.health-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    display: inline-block;
+    margin-left: 4px;
+}
+.health-dot.healthy {
+    background: #30d158;
+    box-shadow: 0 0 6px rgba(48, 209, 88, 0.5);
+}
+.health-dot.unhealthy {
+    background: #ff453a;
+    box-shadow: 0 0 6px rgba(255, 69, 58, 0.5);
+}
+
+.nav-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+/* Hero Section */
+.hero-section {
+    position: relative;
+    background: var(--hero-bg);
+    border-radius: 20px;
+    overflow: hidden;
+    margin-top: 30px;
+    padding: 60px 40px;
+    border: 1px solid var(--glass-border);
+}
+.hero-content {
+    position: relative;
+    z-index: 1;
+}
+.live-badge {
+    display: inline-block;
+    background: rgba(255, 69, 58, 0.2);
+    color: #ff453a;
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    margin-bottom: 16px;
+}

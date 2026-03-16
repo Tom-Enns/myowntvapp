@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MyOwnTVApp</title>
-    <link rel="stylesheet" href="/static/style.css?v=4">
+    <link rel="stylesheet" href="/static/style.css?v=5">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
 </head>
@@ -28,6 +28,9 @@
             <button id="stop-cast-btn" class="stop-cast-btn hidden" onclick="stopCasting()">
                 Stop Casting
             </button>
+            <button id="backends-btn" class="icon-btn">
+                Backends
+            </button>
             <button id="discover-btn" class="icon-btn" onclick="discoverDevices()">
                 Cast Devices <span id="device-count" class="badge">0</span>
             </button>
@@ -38,6 +41,7 @@
     <div id="local-player-container" class="player-overlay hidden">
         <div class="player-header">
             <h2 id="player-title">Now Playing</h2>
+            <div id="player-badges" class="player-badges"></div>
             <button class="close-btn" onclick="closeLocalPlayer()">×</button>
         </div>
         <div class="video-wrapper">
@@ -49,6 +53,13 @@
     </div>
 
     <main class="dashboard">
+        <!-- Backends Panel (Hidden initially) -->
+        <div id="backends-panel" class="backends-panel hidden">
+            <h3>Stream Backends</h3>
+            <p class="panel-hint">Drag to reorder priority. First backend is tried first.</p>
+            <div id="backend-list"></div>
+        </div>
+
         <!-- Devices Dropdown (Hidden initially) -->
         <div id="devices-panel" class="devices-panel hidden">
             <h3>Available Devices</h3>
@@ -103,6 +114,6 @@
         </div>
     </div>
 
-    <script src="/static/app.js?v=4"></script>
+    <script src="/static/app.js?v=5"></script>
 </body>
 </html>

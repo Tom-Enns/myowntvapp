@@ -8,6 +8,8 @@ class Settings:
     PUBLIC_HOST: str = os.environ.get("PUBLIC_HOST", "")
     CREDENTIAL_FILE: str = os.environ.get("CREDENTIAL_FILE", "data/credentials.json")
     EXTRACT_TIMEOUT_S: int = int(os.environ.get("EXTRACT_TIMEOUT_S", "45"))
+    BACKEND_PRIORITY: list[str] = os.environ.get("BACKEND_PRIORITY", "thetvapp").split(",")
+    SCHEDULE_PROVIDER: str = os.environ.get("SCHEDULE_PROVIDER", "thetvapp")
 
     def get_public_host(self, request_port: int | None = None) -> str:
         if self.PUBLIC_HOST:

@@ -1,5 +1,6 @@
 let selectedDeviceId = null;
 let currentStreams = [];
+let backendPriority = [];
 
 // ----------------------------------------------------
 // Status Log
@@ -22,10 +23,9 @@ function clearStatusLog() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    // Attempt device discovery on load
     discoverDevices();
+    loadBackends();
 
-    // Setup category buttons
     const catBtns = document.querySelectorAll('.cat-btn');
     catBtns.forEach(btn => {
         btn.addEventListener('click', (e) => {
@@ -36,22 +36,108 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // Toggle devices panel
     document.getElementById('discover-btn').addEventListener('click', () => {
         const panel = document.getElementById('devices-panel');
         panel.classList.toggle('hidden');
     });
 
-    // Load default
+    // Backend settings toggle
+    document.getElementById('backends-btn').addEventListener('click', () => {
+        const panel = document.getElementById('backends-panel');
+        panel.classList.toggle('hidden');
+    });
+
     loadCategory('nba');
 });
 
+// ----------------------------------------------------
+// Backend Management
+// ----------------------------------------------------
+async function loadBackends() {
+    try {
+        const res = await fetch('/api/backends');
+        const data = await res.json();
+        backendPriority = data.priority || [];
+        renderBackendsPanel(data.backends);
+    } catch (e) {
+        console.error('Failed to load backends:', e);
+    }
+}
+
+function renderBackendsPanel(backends) {
+    const list = document.getElementById('backend-list');
+    list.innerHTML = '';
+
+    backends.forEach((b, idx) => {
+        const div = document.createElement('div');
+        div.className = 'backend-item';
+        div.draggable = true;
+        div.dataset.id = b.id;
+
+        div.innerHTML = `
+            <div class="backend-info">
+                <span class="backend-rank">#${idx + 1}</span>
+                <span class="backend-name">${b.name}</span>
+            </div>
+            <div class="backend-actions">
+                ${idx > 0 ? `<button class="small-btn" onclick="moveBackend('${b.id}', -1)">Up</button>` : ''}
+                ${idx < backends.length - 1 ? `<button class="small-btn" onclick="moveBackend('${b.id}', 1)">Down</button>` : ''}
+                <span class="health-dot" id="health-${b.id}" title="Checking..."></span>
+            </div>
+        `;
+        list.appendChild(div);
+
+        // Check health in background
+        checkBackendHealth(b.id);
+    });
+}
+
+async function checkBackendHealth(backendId) {
+    const dot = document.getElementById(`health-${backendId}`);
+    if (!dot) return;
+    try {
+        const res = await fetch(`/api/backends/${backendId}/health`);
+        const data = await res.json();
+        dot.classList.add(data.healthy ? 'healthy' : 'unhealthy');
+        dot.title = data.healthy ? 'Online' : 'Offline';
+    } catch {
+        dot.classList.add('unhealthy');
+        dot.title = 'Error';
+    }
+}
+
+async function moveBackend(backendId, direction) {
+    const idx = backendPriority.indexOf(backendId);
+    if (idx < 0) return;
+    const newIdx = idx + direction;
+    if (newIdx < 0 || newIdx >= backendPriority.length) return;
+
+    // Swap
+    [backendPriority[idx], backendPriority[newIdx]] = [backendPriority[newIdx], backendPriority[idx]];
+
+    try {
+        const res = await fetch('/api/backends/priority', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ priority: backendPriority })
+        });
+        const data = await res.json();
+        backendPriority = data.priority;
+        loadBackends();
+    } catch (e) {
+        console.error('Failed to update priority:', e);
+    }
+}
+
+// ----------------------------------------------------
+// Category Loading
+// ----------------------------------------------------
 async function loadCategory(category) {
     const grid = document.getElementById('streams-grid');
     const title = document.getElementById('category-title');
     const spinner = document.getElementById('loading-spinner');
     const errorDiv = document.getElementById('streams-error');
-    
+
     grid.innerHTML = '';
     errorDiv.classList.add('hidden');
     spinner.classList.remove('hidden');
@@ -101,18 +187,17 @@ async function loadCategory(category) {
 
 function renderGrid(events) {
     const grid = document.getElementById('streams-grid');
-    
+
     events.forEach(ev => {
         const card = document.createElement('div');
         card.className = 'stream-card';
         card.onclick = () => handleStreamClick(ev);
 
-        // Build logos HTML
         let logosHtml = '';
         if (ev.home_team && ev.away_team) {
             const hLogo = ev.home_logo ? `<img src="${ev.home_logo}" class="team-logo">` : `<div style="color:#aaa;font-size:10px;text-align:center">${ev.home_team}</div>`;
             const aLogo = ev.away_logo ? `<img src="${ev.away_logo}" class="team-logo">` : `<div style="color:#aaa;font-size:10px;text-align:center">${ev.away_team}</div>`;
-            
+
             logosHtml = `
                 <div class="team-logos">
                     <div class="team-logo-container">${aLogo}</div>
@@ -148,7 +233,7 @@ function showCastStatus(text, showSpinner=true) {
     const el = document.getElementById('global-cast-status');
     const txt = document.getElementById('cast-status-text');
     const spin = el.querySelector('.spinner');
-    
+
     el.classList.remove('hidden');
     txt.textContent = text;
     spin.style.display = showSpinner ? 'block' : 'none';
@@ -166,26 +251,50 @@ function stopCasting() {
     setTimeout(hideCastStatus, 2000);
 }
 
+/**
+ * Resolve a stream using the backend-agnostic /api/resolve endpoint.
+ * Falls back to legacy /api/extract if the event has a direct URL (old format).
+ */
+async function resolveStream(eventData) {
+    const body = {
+        event_id: eventData.event_id,
+        title: eventData.title,
+        category: eventData.category,
+        home_team: eventData.home_team || null,
+        away_team: eventData.away_team || null,
+        home_logo: eventData.home_logo || null,
+        away_logo: eventData.away_logo || null,
+    };
+
+    const res = await fetch('/api/resolve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    });
+    return await res.json();
+}
+
 async function castStreamSequence(eventData) {
     clearStatusLog();
     showCastStatus(`Extracting stream for Apple TV...`);
     statusLog(`Opening ${eventData.title.split('\n')[0]}...`);
-    statusLog('Extracting stream URL...');
+    statusLog('Resolving stream from backends...');
     try {
         const t0 = Date.now();
-        const extractRes = await fetch('/api/extract', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url: eventData.url })
-        });
-        const ext = await extractRes.json();
+        const ext = await resolveStream(eventData);
         const extractTime = ((Date.now() - t0) / 1000).toFixed(1);
 
         if (ext.error) {
-            statusLog(`Extraction failed after ${extractTime}s: ${ext.error}`, 'err');
+            statusLog(`Resolution failed after ${extractTime}s: ${ext.error}`, 'err');
             throw new Error(ext.error);
         }
-        statusLog(`Stream found in ${extractTime}s`, 'ok');
+
+        let qualityInfo = '';
+        if (ext.qualities && ext.qualities.length > 0) {
+            const best = ext.qualities[0];
+            qualityInfo = best.resolution ? ` [${best.resolution}]` : '';
+        }
+        statusLog(`Stream found via ${ext.backend_name || 'unknown'} in ${extractTime}s${qualityInfo}`, 'ok');
 
         showCastStatus(`Casting to Apple TV...`);
         statusLog('Preparing remuxed stream (ffmpeg)...');
@@ -217,27 +326,27 @@ async function castStreamSequence(eventData) {
 
 async function playLocalSequence(eventData) {
     clearStatusLog();
-    showCastStatus(`Extracting stream...`);
+    showCastStatus(`Resolving stream...`);
     statusLog(`Opening ${eventData.title.split('\n')[0]}...`);
-    statusLog('Extracting stream URL...');
+    statusLog('Resolving stream from backends...');
     try {
         const t0 = Date.now();
-        const extractRes = await fetch('/api/extract', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url: eventData.url })
-        });
-        const ext = await extractRes.json();
+        const ext = await resolveStream(eventData);
         const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
 
         if (ext.error) {
-            statusLog(`Extraction failed after ${elapsed}s: ${ext.error}`, 'err');
+            statusLog(`Resolution failed after ${elapsed}s: ${ext.error}`, 'err');
             throw new Error(ext.error);
         }
 
-        statusLog(`Stream found in ${elapsed}s — starting playback`, 'ok');
+        let qualityInfo = '';
+        if (ext.qualities && ext.qualities.length > 0) {
+            const best = ext.qualities[0];
+            qualityInfo = best.resolution ? ` [${best.resolution}]` : '';
+        }
+        statusLog(`Stream found via ${ext.backend_name || 'unknown'} in ${elapsed}s${qualityInfo} — starting playback`, 'ok');
         hideCastStatus();
-        openLocalPlayer(ext.proxy_url, eventData.title);
+        openLocalPlayer(ext.proxy_url, eventData.title, ext.qualities, ext.backend_name);
     } catch (e) {
         showCastStatus(`Failed: ${e.message}`, false);
         setTimeout(hideCastStatus, 4000);
@@ -250,15 +359,29 @@ async function playLocalSequence(eventData) {
 let hlsInstance = null;
 let currentProxyUrl = null;
 
-function openLocalPlayer(m3u8Url, title) {
+function openLocalPlayer(m3u8Url, title, qualities, backendName) {
     document.getElementById('local-player-container').classList.remove('hidden');
     document.getElementById('player-title').textContent = title.split('\n')[0];
     currentProxyUrl = m3u8Url;
-    
-    const video = document.getElementById('video-player');
 
-    // On Safari/iOS, use native HLS so AirPlay icon appears in video controls.
-    // HLS.js uses MSE which hides the native AirPlay button.
+    // Show quality and backend badges
+    const badgeContainer = document.getElementById('player-badges');
+    badgeContainer.innerHTML = '';
+    if (backendName) {
+        badgeContainer.innerHTML += `<span class="badge-pill backend-badge">${backendName}</span>`;
+    }
+    if (qualities && qualities.length > 0) {
+        const best = qualities[0];
+        if (best.resolution) {
+            badgeContainer.innerHTML += `<span class="badge-pill quality-badge">${best.resolution}</span>`;
+        }
+        if (best.bandwidth) {
+            const mbps = (best.bandwidth / 1_000_000).toFixed(1);
+            badgeContainer.innerHTML += `<span class="badge-pill bitrate-badge">${mbps} Mbps</span>`;
+        }
+    }
+
+    const video = document.getElementById('video-player');
     const useNative = video.canPlayType('application/vnd.apple.mpegurl');
 
     if (useNative) {
@@ -318,7 +441,6 @@ async function discoverDevices() {
             badge.textContent = data.devices.length;
             statusLog(`Found ${data.devices.length} AirPlay device(s): ${data.devices.map(d => d.name).join(', ')}`, 'ok');
 
-            // Add "Local Browser" option
             createDeviceItem(list, { name: 'Watch Here Locally', identifier: null, address: 'Computer Browser' });
 
             data.devices.forEach(device => {
@@ -336,7 +458,7 @@ function createDeviceItem(container, device) {
     const div = document.createElement('div');
     div.className = 'device-item';
     if (device.identifier === selectedDeviceId) div.classList.add('active');
-    
+
     div.innerHTML = `
         <div>
             <div class="device-name">${device.name}</div>
@@ -344,15 +466,14 @@ function createDeviceItem(container, device) {
         </div>
         ${device.identifier ? `<button class="secondary-btn" onclick="startPairing('${device.identifier}', event)">Pair</button>` : ''}
     `;
-    
+
     div.onclick = (e) => {
         if (e.target.tagName === 'BUTTON') return;
         selectedDeviceId = device.identifier;
         document.querySelectorAll('.device-item').forEach(el => el.classList.remove('active'));
         div.classList.add('active');
         document.getElementById('devices-panel').classList.add('hidden');
-        
-        // Show/hide stop casting button
+
         const stopBtn = document.getElementById('stop-cast-btn');
         if (device.identifier) {
             stopBtn.classList.remove('hidden');
@@ -360,11 +481,10 @@ function createDeviceItem(container, device) {
             stopBtn.classList.add('hidden');
         }
 
-        // Notification
         showCastStatus(device.identifier ? `Target locked: ${device.name}` : `Target locked: Local Browser`, false);
         setTimeout(hideCastStatus, 2000);
     };
-    
+
     container.appendChild(div);
 }
 
@@ -382,7 +502,7 @@ async function startPairing(deviceId, e) {
             body: JSON.stringify({ device_id: deviceId })
         });
         const data = await res.json();
-        
+
         if (data.error) {
             alert('Pairing error: ' + data.error);
             return;

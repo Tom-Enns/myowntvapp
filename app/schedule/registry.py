@@ -1,0 +1,63 @@
+"""Schedule provider registry."""
+
+import logging
+from typing import Optional
+
+from app.models import SportEvent
+
+from .base import ScheduleProvider
+
+logger = logging.getLogger(__name__)
+
+
+class ScheduleRegistry:
+    """Manages schedule providers with a primary + fallback."""
+
+    def __init__(self):
+        self._providers: dict[str, ScheduleProvider] = {}
+        self._primary_id: Optional[str] = None
+
+    def register(self, provider: ScheduleProvider) -> None:
+        self._providers[provider.provider_id] = provider
+        if self._primary_id is None:
+            self._primary_id = provider.provider_id
+        logger.info(f"Registered schedule provider: {provider.display_name} ({provider.provider_id})")
+
+    def set_primary(self, provider_id: str) -> None:
+        if provider_id in self._providers:
+            self._primary_id = provider_id
+
+    def get_primary(self) -> Optional[ScheduleProvider]:
+        if self._primary_id:
+            return self._providers.get(self._primary_id)
+        return None
+
+    def list_providers(self) -> list[dict]:
+        return [
+            {"id": p.provider_id, "name": p.display_name, "primary": p.provider_id == self._primary_id}
+            for p in self._providers.values()
+        ]
+
+    async def get_events(self, category: str) -> list[SportEvent]:
+        """Get events from primary provider, fall back to others on failure."""
+        primary = self.get_primary()
+        if primary:
+            try:
+                events = await primary.get_events(category)
+                if events:
+                    return events
+            except Exception as e:
+                logger.warning(f"Primary schedule provider {primary.provider_id} failed: {e}")
+
+        # Try other providers as fallback
+        for pid, provider in self._providers.items():
+            if pid == self._primary_id:
+                continue
+            try:
+                events = await provider.get_events(category)
+                if events:
+                    return events
+            except Exception as e:
+                logger.warning(f"Schedule provider {pid} failed: {e}")
+
+        return []
