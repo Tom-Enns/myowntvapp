@@ -46,9 +46,15 @@ class TheTVAppSchedule(ScheduleProvider):
         try:
             async with aiohttp.ClientSession(headers={"User-Agent": _UA}) as session:
                 async with session.get(category_url, timeout=aiohttp.ClientTimeout(total=20)) as resp:
+                    if resp.status == 403:
+                        raise PermissionError(
+                            f"TheTVApp.to returned 403 Forbidden. "
+                            f"Your IP address may be blocked by this provider."
+                        )
                     if resp.status != 200:
-                        logger.warning(f"Got {resp.status} for {category_url}")
-                        return []
+                        raise RuntimeError(
+                            f"TheTVApp.to returned HTTP {resp.status} for {category}."
+                        )
                     html = await resp.text()
 
             soup = BeautifulSoup(html, "html.parser")
@@ -75,9 +81,18 @@ class TheTVAppSchedule(ScheduleProvider):
 
             return events
 
+        except (PermissionError, RuntimeError):
+            raise
+        except aiohttp.ClientConnectorError as e:
+            raise ConnectionError(
+                f"Cannot connect to TheTVApp.to — the site may be down or your network is blocking it. ({e})"
+            )
+        except asyncio.TimeoutError:
+            raise TimeoutError(
+                f"TheTVApp.to did not respond within 20 seconds. The site may be overloaded or unreachable."
+            )
         except Exception as e:
-            logger.error(f"Failed to scrape category {category}: {type(e).__name__}: {e}")
-            return []
+            raise RuntimeError(f"TheTVApp.to error: {type(e).__name__}: {e}")
 
     async def _parse_event(self, event_id: str, title: str, url: str, category: str) -> SportEvent:
         """Parse team names from title and fetch logos."""

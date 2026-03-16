@@ -166,14 +166,30 @@ async function loadCategory(category) {
             throw new Error(data.error);
         }
 
+        // Show warnings from providers that failed (even if another provider succeeded)
+        if (data.warnings && data.warnings.length > 0) {
+            data.warnings.forEach(w => statusLog(`Warning: ${w}`, 'warn'));
+        }
+
         if (!data.events || data.events.length === 0) {
-            statusLog(`No events found (${elapsed}s). The source may be down — try refreshing.`, 'warn');
-            grid.innerHTML = '<div style="color:var(--text-muted); padding:20px;">No events found. Try refreshing the page.</div>';
+            const hasWarnings = data.warnings && data.warnings.length > 0;
+            if (hasWarnings) {
+                // Providers failed — show the actual reason, not a vague message
+                statusLog(`No events loaded (${elapsed}s)`, 'err');
+                grid.innerHTML = `<div class="error-banner">
+                    <div class="error-title">Could not load events</div>
+                    <div class="error-details">${data.warnings.map(w => `<div>${escapeHtml(w)}</div>`).join('')}</div>
+                    <div class="error-hint">This usually means a provider is blocking your connection. Try a VPN or check if the site is accessible from your browser.</div>
+                </div>`;
+            } else {
+                statusLog(`No events found (${elapsed}s).`, 'warn');
+                grid.innerHTML = '<div style="color:var(--text-muted); padding:20px;">No events found for this category right now.</div>';
+            }
             return;
         }
 
         const withLogos = data.events.filter(e => e.home_logo || e.away_logo).length;
-        statusLog(`Loaded ${data.events.length} events in ${elapsed}s` + (withLogos > 0 ? ` (${withLogos} with logos)` : ''), 'ok');
+        statusLog(`Loaded ${data.events.length} events in ${elapsed}s` + (withLogos > 0 ? ` (${withLogos} with logos)` : '') + (data.provider ? ` via ${data.provider}` : ''), 'ok');
 
         currentStreams = data.events;
         renderGrid(data.events);
@@ -285,7 +301,7 @@ async function castStreamSequence(eventData) {
         const extractTime = ((Date.now() - t0) / 1000).toFixed(1);
 
         if (ext.error) {
-            statusLog(`Resolution failed after ${extractTime}s: ${ext.error}`, 'err');
+            logBackendErrors(ext, extractTime);
             throw new Error(ext.error);
         }
 
@@ -320,7 +336,7 @@ async function castStreamSequence(eventData) {
 
     } catch (e) {
         showCastStatus(`Failed: ${e.message}`, false);
-        setTimeout(hideCastStatus, 4000);
+        // Don't auto-hide — user needs to read the error
     }
 }
 
@@ -335,7 +351,7 @@ async function playLocalSequence(eventData) {
         const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
 
         if (ext.error) {
-            statusLog(`Resolution failed after ${elapsed}s: ${ext.error}`, 'err');
+            logBackendErrors(ext, elapsed);
             throw new Error(ext.error);
         }
 
@@ -348,10 +364,59 @@ async function playLocalSequence(eventData) {
         hideCastStatus();
         openLocalPlayer(ext.proxy_url, eventData.title, ext.qualities, ext.backend_name);
     } catch (e) {
-        showCastStatus(`Failed: ${e.message}`, false);
-        setTimeout(hideCastStatus, 4000);
+        showErrorOverlay(e.message);
     }
 }
+
+// ----------------------------------------------------
+// Error Display Helpers
+// ----------------------------------------------------
+function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+function logBackendErrors(response, elapsed) {
+    statusLog(`Stream resolution failed after ${elapsed}s`, 'err');
+    if (response.backend_errors) {
+        response.backend_errors.forEach(be => {
+            statusLog(`  ${be.backend}: ${be.error} (${be.latency_ms}ms)`, 'err');
+        });
+    }
+}
+
+function showErrorOverlay(message) {
+    hideCastStatus();
+    // Show a persistent error in the player area instead of a disappearing toast
+    const container = document.getElementById('local-player-container');
+    container.classList.remove('hidden');
+    document.getElementById('player-title').textContent = 'Stream Error';
+    document.getElementById('player-badges').innerHTML = '';
+
+    const videoWrapper = container.querySelector('.video-wrapper');
+    const video = document.getElementById('video-player');
+    video.style.display = 'none';
+
+    // Create or update error display inside video wrapper
+    let errorEl = document.getElementById('player-error-display');
+    if (!errorEl) {
+        errorEl = document.createElement('div');
+        errorEl.id = 'player-error-display';
+        errorEl.className = 'player-error-display';
+        videoWrapper.appendChild(errorEl);
+    }
+    errorEl.innerHTML = `
+        <div class="error-icon">!</div>
+        <div class="error-title">Stream Unavailable</div>
+        <div class="error-message">${escapeHtml(message)}</div>
+        <div class="error-hint">Check the status log below for details from each backend.</div>
+    `;
+    errorEl.style.display = 'flex';
+}
+
+// Override closeLocalPlayer to clean up error state
+const _origCloseLocalPlayer = typeof closeLocalPlayer === 'function' ? closeLocalPlayer : null;
 
 // ----------------------------------------------------
 // Local Player
@@ -363,6 +428,12 @@ function openLocalPlayer(m3u8Url, title, qualities, backendName) {
     document.getElementById('local-player-container').classList.remove('hidden');
     document.getElementById('player-title').textContent = title.split('\n')[0];
     currentProxyUrl = m3u8Url;
+
+    // Ensure video is visible (may have been hidden by error overlay)
+    const video = document.getElementById('video-player');
+    video.style.display = '';
+    const errorEl = document.getElementById('player-error-display');
+    if (errorEl) errorEl.style.display = 'none';
 
     // Show quality and backend badges
     const badgeContainer = document.getElementById('player-badges');
@@ -402,10 +473,14 @@ function closeLocalPlayer() {
     const video = document.getElementById('video-player');
     video.pause();
     video.removeAttribute('src');
+    video.style.display = '';
     if (hlsInstance) {
         hlsInstance.destroy();
         hlsInstance = null;
     }
+    // Clean up error overlay if present
+    const errorEl = document.getElementById('player-error-display');
+    if (errorEl) errorEl.style.display = 'none';
 }
 
 function copyStreamUrl() {

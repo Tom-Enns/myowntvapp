@@ -52,8 +52,13 @@ async def list_sports_category(category: str, request: Request):
     """Fetch events from the schedule registry (backend-agnostic)."""
     try:
         schedule_registry = request.app.state.schedule_registry
-        events = await schedule_registry.get_events(category)
-        return {"events": [ev.model_dump(mode="json") for ev in events]}
+        result = await schedule_registry.get_events_with_status(category)
+        response = {"events": [ev.model_dump(mode="json") for ev in result.events]}
+        if result.errors:
+            response["warnings"] = result.errors
+        if result.provider_id:
+            response["provider"] = result.provider_id
+        return response
     except Exception as e:
         return {"error": f"Failed to fetch category {category}: {str(e)}"}
 
@@ -86,9 +91,20 @@ async def resolve_stream(body: ResolveRequest, request: Request):
             return {"error": f"Backend {backend.display_name} failed: {str(e)}"}
     else:
         # Try all backends in priority order
-        stream = await backend_registry.resolve_best(event)
+        stream, attempts = await backend_registry.resolve_best(event)
         if not stream:
-            return {"error": "No backend could resolve a stream for this event"}
+            # Build a detailed error from all backend attempts
+            error_details = []
+            for attempt in attempts:
+                error_details.append(f"{attempt.backend_name}: {attempt.error}")
+            summary = "; ".join(error_details) if error_details else "No backends available"
+            return {
+                "error": f"All backends failed to resolve a stream. {summary}",
+                "backend_errors": [
+                    {"backend": a.backend_name, "error": a.error, "latency_ms": a.latency_ms}
+                    for a in attempts
+                ],
+            }
 
     session_id = str(uuid.uuid4())
     sessions[session_id] = StreamInfo(

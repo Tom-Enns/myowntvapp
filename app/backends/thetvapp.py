@@ -1,5 +1,6 @@
 """TheTVApp.to stream backend — resolves streams from thetvapp.to event pages."""
 
+import asyncio
 import logging
 import re
 from base64 import b64decode
@@ -98,10 +99,38 @@ class TheTVAppBackend(StreamBackend):
         """Extract HLS stream URL from a thetvapp.to event page."""
         headers = {"User-Agent": _UA}
 
-        async with aiohttp.ClientSession(headers=headers) as session:
-            async with session.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+        try:
+            session = aiohttp.ClientSession(headers=headers)
+        except Exception as e:
+            raise RuntimeError(f"Failed to create HTTP session: {e}")
+
+        async with session:
+            try:
+                resp = await session.get(url, timeout=aiohttp.ClientTimeout(total=15))
+            except aiohttp.ClientConnectorError:
+                raise ConnectionError(
+                    "Cannot connect to TheTVApp.to — the site may be down or blocked by your network."
+                )
+            except asyncio.TimeoutError:
+                raise TimeoutError(
+                    "TheTVApp.to did not respond in time. The site may be overloaded."
+                )
+
+            async with resp:
+                if resp.status == 403:
+                    raise PermissionError(
+                        "TheTVApp.to returned 403 Forbidden. "
+                        "Your IP address appears to be blocked by this provider."
+                    )
+                if resp.status == 451:
+                    raise PermissionError(
+                        "TheTVApp.to returned 451 Unavailable For Legal Reasons. "
+                        "This content may be geo-restricted in your region."
+                    )
                 if resp.status != 200:
-                    raise RuntimeError(f"Page returned {resp.status}")
+                    raise RuntimeError(
+                        f"TheTVApp.to returned HTTP {resp.status}. The site may be experiencing issues."
+                    )
                 page_html = await resp.text()
                 page_url = str(resp.url)
                 page_cookies = {k: v.value for k, v in resp.cookies.items()}

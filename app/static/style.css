@@ -649,6 +649,74 @@ video {
     box-shadow: 0 0 6px rgba(255, 69, 58, 0.5);
 }
 
+/* Error Banner (in streams grid) */
+.error-banner {
+    background: rgba(255, 69, 58, 0.08);
+    border: 1px solid rgba(255, 69, 58, 0.25);
+    border-radius: 12px;
+    padding: 24px;
+    text-align: center;
+}
+.error-banner .error-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: #ff453a;
+    margin-bottom: 12px;
+}
+.error-banner .error-details {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-bottom: 12px;
+    line-height: 1.6;
+}
+.error-banner .error-hint {
+    font-size: 12px;
+    color: var(--text-muted);
+    opacity: 0.7;
+}
+
+/* Error Display (in player overlay) */
+.player-error-display {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 40px;
+    max-width: 500px;
+    margin: 0 auto;
+}
+.player-error-display .error-icon {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: rgba(255, 69, 58, 0.15);
+    color: #ff453a;
+    font-size: 32px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 20px;
+}
+.player-error-display .error-title {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--text-main);
+    margin-bottom: 12px;
+}
+.player-error-display .error-message {
+    font-size: 14px;
+    color: #ff9f0a;
+    line-height: 1.6;
+    margin-bottom: 16px;
+    word-break: break-word;
+}
+.player-error-display .error-hint {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
 .nav-right {
     display: flex;
     align-items: center;

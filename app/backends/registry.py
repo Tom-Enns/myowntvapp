@@ -83,15 +83,45 @@ class BackendRegistry:
                 ))
         return results
 
-    async def resolve_best(self, event: SportEvent) -> Optional[ResolvedStream]:
-        """Return the first successful stream (in priority order)."""
+    async def resolve_best(self, event: SportEvent) -> tuple[Optional[ResolvedStream], list[BackendStatus]]:
+        """Return the first successful stream and all attempt statuses.
+
+        Returns (stream_or_none, list_of_all_attempts) so callers can
+        report exactly what happened with each backend.
+        """
+        attempts = []
         for backend in self.get_backends():
+            t0 = time.monotonic()
             try:
                 stream = await backend.resolve_stream(event)
+                latency = int((time.monotonic() - t0) * 1000)
                 if stream:
+                    attempts.append(BackendStatus(
+                        backend_id=backend.backend_id,
+                        backend_name=backend.display_name,
+                        success=True,
+                        stream=stream,
+                        latency_ms=latency,
+                    ))
                     logger.info(f"Stream resolved by {backend.display_name}")
-                    return stream
+                    return stream, attempts
+                else:
+                    attempts.append(BackendStatus(
+                        backend_id=backend.backend_id,
+                        backend_name=backend.display_name,
+                        success=False,
+                        error="No stream found for this event",
+                        latency_ms=latency,
+                    ))
             except Exception as e:
+                latency = int((time.monotonic() - t0) * 1000)
                 logger.warning(f"Backend {backend.backend_id} failed: {e}")
+                attempts.append(BackendStatus(
+                    backend_id=backend.backend_id,
+                    backend_name=backend.display_name,
+                    success=False,
+                    error=str(e),
+                    latency_ms=latency,
+                ))
                 continue
-        return None
+        return None, attempts
