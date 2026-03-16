@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html>
+<head><title>Stream Embed</title></head>
+<body>
+<script>
+    var player = jwplayer('player');
+    var streamUrl = atob('aHR0cHM6Ly9zdHJlYW0uZXhhbXBsZS5jb20vbGl2ZS9tYXN0ZXIubTN1OA==');
+    player.setup({
+        sources: [{file: streamUrl}]
+    });
+</script>
+</body>
+</html>

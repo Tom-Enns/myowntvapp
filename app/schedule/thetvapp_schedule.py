@@ -83,7 +83,7 @@ class TheTVAppSchedule(ScheduleProvider):
 
         except (PermissionError, RuntimeError):
             raise
-        except aiohttp.ClientConnectorError as e:
+        except (aiohttp.ClientConnectorError, aiohttp.ClientConnectionError) as e:
             raise ConnectionError(
                 f"Cannot connect to TheTVApp.to — the site may be down or your network is blocking it. ({e})"
             )

@@ -1,0 +1,9 @@
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = [
+    "live: tests that hit real external services (deselect with '-m not live')",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning:pytest_asyncio",
+]

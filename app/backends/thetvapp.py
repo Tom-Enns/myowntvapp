@@ -107,7 +107,7 @@ class TheTVAppBackend(StreamBackend):
         async with session:
             try:
                 resp = await session.get(url, timeout=aiohttp.ClientTimeout(total=15))
-            except aiohttp.ClientConnectorError:
+            except (aiohttp.ClientConnectorError, aiohttp.ClientConnectionError):
                 raise ConnectionError(
                     "Cannot connect to TheTVApp.to — the site may be down or blocked by your network."
                 )
