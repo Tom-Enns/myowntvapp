@@ -100,4 +100,6 @@ def get_site_registry() -> SiteRegistry:
         _registry.register(NFLWebHunterSite())
         from app.sites.totalsportek import TotalSportekSite
         _registry.register(TotalSportekSite())
+        from app.sites.shd247 import SHD247Site
+        _registry.register(SHD247Site())
     return _registry
