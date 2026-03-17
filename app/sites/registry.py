@@ -102,4 +102,6 @@ def get_site_registry() -> SiteRegistry:
         _registry.register(TotalSportekSite())
         from app.sites.shd247 import SHD247Site
         _registry.register(SHD247Site())
+        from app.sites.prostreams import ProStreamsSite
+        _registry.register(ProStreamsSite())
     return _registry
