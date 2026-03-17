@@ -1,5 +1,6 @@
 import asyncio
 import uuid
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
@@ -9,6 +10,25 @@ from app.models import SportEvent
 from app.services.airplay import AirPlayService
 from app.routes.proxy import sessions
 from app.services.extractor import StreamInfo
+
+
+def _stream_source_name(m3u8_url: str) -> str:
+    """Extract a human-friendly source name from an m3u8 URL's domain.
+
+    e.g. 'https://lpnba.akamaized.net/.../index.m3u8' → 'akamaized.net'
+         'https://chevy.soyspace.cyou/proxy/...'       → 'soyspace.cyou'
+         'https://streambtw.com/live/...'               → 'streambtw.com'
+    """
+    try:
+        host = urlparse(m3u8_url).hostname or ""
+    except Exception:
+        return "unknown"
+    parts = host.split(".")
+    # For 3+ part domains, drop the subdomain to get the recognisable base
+    # e.g. lpnba.akamaized.net → akamaized.net, fg1.fgfbg5433dd.site → fgfbg5433dd.site
+    if len(parts) > 2:
+        return ".".join(parts[-2:])
+    return host or "unknown"
 
 router = APIRouter()
 airplay_service = AirPlayService(settings.CREDENTIAL_FILE)
@@ -122,6 +142,7 @@ async def resolve_stream(body: ResolveRequest, request: Request):
         "original_m3u8": stream.m3u8_url,
         "backend_id": stream.backend_id,
         "backend_name": stream.backend_name,
+        "stream_source": _stream_source_name(stream.m3u8_url),
         "qualities": [q.model_dump(mode="json") for q in stream.qualities],
     }
 
@@ -174,6 +195,7 @@ async def resolve_all_streams(body: ResolveRequest, request: Request):
             "original_m3u8": stream.m3u8_url,
             "backend_id": stream.backend_id,
             "backend_name": stream.backend_name,
+            "stream_source": _stream_source_name(stream.m3u8_url),
             "source_label": stream.source_label,
             "qualities": [q.model_dump(mode="json") for q in stream.qualities],
         })

@@ -332,7 +332,7 @@ async function castStreamSequence(eventData) {
             const best = ext.qualities[0];
             qualityInfo = best.resolution ? ` [${best.resolution}]` : '';
         }
-        statusLog(`Stream found via ${ext.backend_name || 'unknown'} in ${extractTime}s${qualityInfo}`, 'ok');
+        statusLog(`Stream found via ${ext.stream_source || ext.backend_name || 'unknown'} in ${extractTime}s${qualityInfo}`, 'ok');
 
         showCastStatus(`Casting to Apple TV...`);
         statusLog('Preparing remuxed stream (ffmpeg)...');
@@ -400,9 +400,10 @@ async function playLocalSequence(eventData) {
             const q = best.qualities[0];
             qualityInfo = q.resolution ? ` [${q.resolution}]` : '';
         }
-        statusLog(`Playing best of ${streams.length} stream(s) via ${best.backend_name}${qualityInfo}`, 'ok');
+        const bestSource = best.stream_source || best.backend_name;
+        statusLog(`Playing best of ${streams.length} stream(s) via ${bestSource}${qualityInfo}`, 'ok');
         hideCastStatus();
-        openLocalPlayer(best.proxy_url, eventData.title, best.qualities, best.backend_name, streams);
+        openLocalPlayer(best.proxy_url, eventData.title, best.qualities, bestSource, streams);
     } catch (e) {
         showErrorOverlay(e.message);
     }
@@ -540,9 +541,10 @@ function renderStreamPicker(streams, activeUrl) {
             quality = best.resolution || '';
         }
 
+        const sourceName = s.stream_source || s.backend_name;
         btn.innerHTML = `
             <span class="stream-option-label">${label}</span>
-            <span class="stream-option-meta">${s.backend_name}${quality ? ' · ' + quality : ''}</span>
+            <span class="stream-option-meta">${sourceName}${quality ? ' · ' + quality : ''}</span>
         `;
 
         btn.onclick = () => switchStream(s, streams);
@@ -557,8 +559,9 @@ function switchStream(stream, allStreams) {
     // Update badges
     const badgeContainer = document.getElementById('player-badges');
     badgeContainer.innerHTML = '';
-    if (stream.backend_name) {
-        badgeContainer.innerHTML += `<span class="badge-pill backend-badge">${stream.backend_name}</span>`;
+    const switchSource = stream.stream_source || stream.backend_name;
+    if (switchSource) {
+        badgeContainer.innerHTML += `<span class="badge-pill backend-badge">${switchSource}</span>`;
     }
     if (stream.qualities && stream.qualities.length > 0) {
         const best = stream.qualities[0];
@@ -573,7 +576,7 @@ function switchStream(stream, allStreams) {
 
     renderStreamPicker(allStreams, stream.proxy_url);
     startPlayback(video, stream.proxy_url);
-    statusLog(`Switched to stream from ${stream.backend_name}`, 'ok');
+    statusLog(`Switched to stream from ${switchSource}`, 'ok');
 }
 
 function closeLocalPlayer() {
