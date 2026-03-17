@@ -20,7 +20,14 @@ class ScheduleResult:
 
 
 class ScheduleRegistry:
-    """Manages schedule providers with a primary + fallback."""
+    """Manages schedule providers with a primary + fallback.
+
+    For a given category, providers are tried in this order:
+    1. Category-specialized providers (those supporting only a few categories)
+       — e.g. NHL Official API for 'nhl'
+    2. The primary provider (general-purpose, like thetvapp)
+    3. Other general providers as fallback
+    """
 
     def __init__(self):
         self._providers: dict[str, ScheduleProvider] = {}
@@ -43,39 +50,50 @@ class ScheduleRegistry:
 
     def list_providers(self) -> list[dict]:
         return [
-            {"id": p.provider_id, "name": p.display_name, "primary": p.provider_id == self._primary_id}
+            {
+                "id": p.provider_id,
+                "name": p.display_name,
+                "primary": p.provider_id == self._primary_id,
+                "categories": p.supported_categories(),
+            }
             for p in self._providers.values()
         ]
 
+    def _get_ordered_providers(self, category: str) -> list[ScheduleProvider]:
+        """Return providers ordered: specialized first, then primary, then rest."""
+        specialized = []
+        general = []
+
+        for pid, provider in self._providers.items():
+            cats = provider.supported_categories()
+            supports = category.lower() in [c.lower() for c in cats]
+            if not supports:
+                continue
+            # "Specialized" = supports 3 or fewer categories
+            if len(cats) <= 3:
+                specialized.append(provider)
+            else:
+                general.append(provider)
+
+        # Within general, put primary first
+        general.sort(key=lambda p: 0 if p.provider_id == self._primary_id else 1)
+
+        return specialized + general
+
     async def get_events_with_status(self, category: str) -> ScheduleResult:
-        """Get events from primary provider, fall back to others on failure.
+        """Get events, trying specialized providers first, then primary, then fallbacks.
         Always returns a ScheduleResult with any errors collected."""
         result = ScheduleResult()
 
-        primary = self.get_primary()
-        if primary:
-            try:
-                events = await primary.get_events(category)
-                if events:
-                    result.events = events
-                    result.provider_id = primary.provider_id
-                    return result
-            except Exception as e:
-                logger.warning(f"Primary schedule provider {primary.provider_id} failed: {e}")
-                result.errors.append(f"{primary.display_name}: {e}")
-
-        # Try other providers as fallback
-        for pid, provider in self._providers.items():
-            if pid == self._primary_id:
-                continue
+        for provider in self._get_ordered_providers(category):
             try:
                 events = await provider.get_events(category)
                 if events:
                     result.events = events
-                    result.provider_id = pid
+                    result.provider_id = provider.provider_id
                     return result
             except Exception as e:
-                logger.warning(f"Schedule provider {pid} failed: {e}")
+                logger.warning(f"Schedule provider {provider.provider_id} failed: {e}")
                 result.errors.append(f"{provider.display_name}: {e}")
 
         return result

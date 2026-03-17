@@ -1,0 +1,149 @@
+{
+  "nextStartDate": "2026-03-23",
+  "previousStartDate": "2026-03-09",
+  "gameWeek": [
+    {
+      "date": "2026-03-16",
+      "dayAbbrev": "MON",
+      "numberOfGames": 3,
+      "games": [
+        {
+          "id": 2025020900,
+          "season": 20252026,
+          "gameType": 2,
+          "gameDate": "2026-03-16",
+          "gameCenterLink": "/gamecenter/bos-vs-tor/2026/03/16/2025020900",
+          "venue": {"default": "Scotiabank Arena"},
+          "startTimeUTC": "2026-03-17T00:00:00Z",
+          "easternUTCOffset": "-04:00",
+          "gameState": "FUT",
+          "gameScheduleState": "OK",
+          "awayTeam": {
+            "id": 6,
+            "abbrev": "BOS",
+            "placeName": {"default": "Boston"},
+            "commonName": {"default": "Bruins"},
+            "placeNameWithPreposition": {"default": "Boston"},
+            "logo": "https://assets.nhle.com/logos/nhl/svg/BOS_light.svg",
+            "darkLogo": "https://assets.nhle.com/logos/nhl/svg/BOS_dark.svg",
+            "awaySplitSquad": false
+          },
+          "homeTeam": {
+            "id": 10,
+            "abbrev": "TOR",
+            "placeName": {"default": "Toronto"},
+            "commonName": {"default": "Maple Leafs"},
+            "placeNameWithPreposition": {"default": "Toronto"},
+            "logo": "https://assets.nhle.com/logos/nhl/svg/TOR_light.svg",
+            "darkLogo": "https://assets.nhle.com/logos/nhl/svg/TOR_dark.svg",
+            "homeSplitSquad": false
+          }
+        },
+        {
+          "id": 2025020901,
+          "season": 20252026,
+          "gameType": 2,
+          "gameDate": "2026-03-16",
+          "gameCenterLink": "/gamecenter/sea-vs-edm/2026/03/16/2025020901",
+          "venue": {"default": "Rogers Place"},
+          "startTimeUTC": "2026-03-17T02:00:00Z",
+          "easternUTCOffset": "-04:00",
+          "gameState": "LIVE",
+          "gameScheduleState": "OK",
+          "awayTeam": {
+            "id": 55,
+            "abbrev": "SEA",
+            "placeName": {"default": "Seattle"},
+            "commonName": {"default": "Kraken"},
+            "logo": "https://assets.nhle.com/logos/nhl/svg/SEA_light.svg",
+            "darkLogo": "https://assets.nhle.com/logos/nhl/svg/SEA_dark.svg",
+            "score": 2,
+            "awaySplitSquad": false
+          },
+          "homeTeam": {
+            "id": 22,
+            "abbrev": "EDM",
+            "placeName": {"default": "Edmonton"},
+            "commonName": {"default": "Oilers"},
+            "logo": "https://assets.nhle.com/logos/nhl/svg/EDM_light.svg",
+            "darkLogo": "https://assets.nhle.com/logos/nhl/svg/EDM_dark.svg",
+            "score": 3,
+            "homeSplitSquad": false
+          }
+        },
+        {
+          "id": 2025020899,
+          "season": 20252026,
+          "gameType": 2,
+          "gameDate": "2026-03-16",
+          "gameCenterLink": "/gamecenter/stl-vs-chi/2026/03/16/2025020899",
+          "venue": {"default": "United Center"},
+          "startTimeUTC": "2026-03-16T23:00:00Z",
+          "easternUTCOffset": "-04:00",
+          "gameState": "OFF",
+          "gameScheduleState": "OK",
+          "gameOutcome": {
+            "lastPeriodType": "OT"
+          },
+          "awayTeam": {
+            "id": 19,
+            "abbrev": "STL",
+            "placeName": {"default": "St. Louis"},
+            "commonName": {"default": "Blues"},
+            "logo": "https://assets.nhle.com/logos/nhl/svg/STL_light.svg",
+            "darkLogo": "https://assets.nhle.com/logos/nhl/svg/STL_dark.svg",
+            "score": 4,
+            "awaySplitSquad": false
+          },
+          "homeTeam": {
+            "id": 16,
+            "abbrev": "CHI",
+            "placeName": {"default": "Chicago"},
+            "commonName": {"default": "Blackhawks"},
+            "logo": "https://assets.nhle.com/logos/nhl/svg/CHI_light.svg",
+            "darkLogo": "https://assets.nhle.com/logos/nhl/svg/CHI_dark.svg",
+            "score": 3,
+            "homeSplitSquad": false
+          }
+        }
+      ]
+    },
+    {
+      "date": "2026-03-17",
+      "dayAbbrev": "TUE",
+      "numberOfGames": 1,
+      "games": [
+        {
+          "id": 2025020910,
+          "season": 20252026,
+          "gameType": 2,
+          "gameDate": "2026-03-17",
+          "gameCenterLink": "/gamecenter/nyr-vs-pit/2026/03/17/2025020910",
+          "venue": {"default": "PPG Paints Arena"},
+          "startTimeUTC": "2026-03-18T00:00:00Z",
+          "easternUTCOffset": "-04:00",
+          "gameState": "FUT",
+          "gameScheduleState": "OK",
+          "awayTeam": {
+            "id": 3,
+            "abbrev": "NYR",
+            "placeName": {"default": "New York"},
+            "commonName": {"default": "Rangers"},
+            "logo": "https://assets.nhle.com/logos/nhl/svg/NYR_light.svg",
+            "darkLogo": "https://assets.nhle.com/logos/nhl/svg/NYR_dark.svg",
+            "awaySplitSquad": false
+          },
+          "homeTeam": {
+            "id": 5,
+            "abbrev": "PIT",
+            "placeName": {"default": "Pittsburgh"},
+            "commonName": {"default": "Penguins"},
+            "logo": "https://assets.nhle.com/logos/nhl/svg/PIT_light.svg",
+            "darkLogo": "https://assets.nhle.com/logos/nhl/svg/PIT_dark.svg",
+            "homeSplitSquad": false
+          }
+        }
+      ]
+    }
+  ]
+}

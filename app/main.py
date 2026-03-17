@@ -13,6 +13,7 @@ from app.backends.thetvapp import create_backend as create_thetvapp_backend
 from app.schedule.registry import ScheduleRegistry
 from app.schedule.thetvapp_schedule import create_provider as create_thetvapp_schedule
 from app.schedule.sportsdb import create_provider as create_sportsdb_schedule
+from app.schedule.nhl_schedule import create_provider as create_nhl_schedule
 from app.routes import ui, api, proxy
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -34,6 +35,8 @@ async def lifespan(app: FastAPI):
     schedule_registry.register(thetvapp_schedule)
     sportsdb_schedule = create_sportsdb_schedule(app.state.logos)
     schedule_registry.register(sportsdb_schedule)
+    nhl_schedule = create_nhl_schedule()
+    schedule_registry.register(nhl_schedule)
     schedule_registry.set_primary(settings.SCHEDULE_PROVIDER)
     app.state.schedule_registry = schedule_registry
 
