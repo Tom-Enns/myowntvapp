@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MyOwnTVApp</title>
-    <link rel="stylesheet" href="/static/style.css?v=5">
+    <link rel="stylesheet" href="/static/style.css?v=6">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
 </head>
@@ -47,6 +47,7 @@
         <div class="video-wrapper">
             <video id="video-player" controls autoplay playsinline x-webkit-airplay="allow"></video>
         </div>
+        <div id="stream-picker" class="stream-picker hidden"></div>
         <div class="player-controls">
             <button onclick="copyStreamUrl()" class="secondary">Copy M3U8 Link</button>
         </div>
@@ -114,6 +115,6 @@
         </div>
     </div>
 
-    <script src="/static/app.js?v=6"></script>
+    <script src="/static/app.js?v=7"></script>
 </body>
 </html>

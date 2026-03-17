@@ -269,7 +269,6 @@ function stopCasting() {
 
 /**
  * Resolve a stream using the backend-agnostic /api/resolve endpoint.
- * Falls back to legacy /api/extract if the event has a direct URL (old format).
  */
 async function resolveStream(eventData) {
     const body = {
@@ -283,6 +282,29 @@ async function resolveStream(eventData) {
     };
 
     const res = await fetch('/api/resolve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    });
+    return await res.json();
+}
+
+/**
+ * Resolve ALL streams from ALL backends in parallel.
+ * Returns multiple streams sorted by quality for the stream picker.
+ */
+async function resolveAllStreams(eventData) {
+    const body = {
+        event_id: eventData.event_id,
+        title: eventData.title,
+        category: eventData.category,
+        home_team: eventData.home_team || null,
+        away_team: eventData.away_team || null,
+        home_logo: eventData.home_logo || null,
+        away_logo: eventData.away_logo || null,
+    };
+
+    const res = await fetch('/api/resolve-all', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
@@ -342,27 +364,45 @@ async function castStreamSequence(eventData) {
 
 async function playLocalSequence(eventData) {
     clearStatusLog();
-    showCastStatus(`Resolving stream...`);
+    showCastStatus(`Resolving streams...`);
     statusLog(`Opening ${eventData.title.split('\n')[0]}...`);
-    statusLog('Resolving stream from backends...');
+    statusLog('Resolving streams from all backends...');
     try {
         const t0 = Date.now();
-        const ext = await resolveStream(eventData);
+        const result = await resolveAllStreams(eventData);
         const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
 
-        if (ext.error) {
-            logBackendErrors(ext, elapsed);
-            throw new Error(ext.error);
+        if (result.error) {
+            logBackendErrors(result, elapsed);
+            throw new Error(result.error);
         }
 
-        let qualityInfo = '';
-        if (ext.qualities && ext.qualities.length > 0) {
-            const best = ext.qualities[0];
-            qualityInfo = best.resolution ? ` [${best.resolution}]` : '';
+        const streams = result.streams || [];
+        if (streams.length === 0) {
+            throw new Error('No streams found from any backend');
         }
-        statusLog(`Stream found via ${ext.backend_name || 'unknown'} in ${elapsed}s${qualityInfo} — starting playback`, 'ok');
+
+        // Log backend statuses
+        if (result.backend_statuses) {
+            result.backend_statuses.forEach(s => {
+                if (s.success) {
+                    statusLog(`${s.backend}: found stream (${s.latency_ms}ms)`, 'ok');
+                } else {
+                    statusLog(`${s.backend}: ${s.error} (${s.latency_ms}ms)`, 'warn');
+                }
+            });
+        }
+
+        // Auto-play the best stream (first in list — sorted by quality)
+        const best = streams[0];
+        let qualityInfo = '';
+        if (best.qualities && best.qualities.length > 0) {
+            const q = best.qualities[0];
+            qualityInfo = q.resolution ? ` [${q.resolution}]` : '';
+        }
+        statusLog(`Playing best of ${streams.length} stream(s) via ${best.backend_name}${qualityInfo}`, 'ok');
         hideCastStatus();
-        openLocalPlayer(ext.proxy_url, eventData.title, ext.qualities, ext.backend_name);
+        openLocalPlayer(best.proxy_url, eventData.title, best.qualities, best.backend_name, streams);
     } catch (e) {
         showErrorOverlay(e.message);
     }
@@ -424,10 +464,13 @@ const _origCloseLocalPlayer = typeof closeLocalPlayer === 'function' ? closeLoca
 let hlsInstance = null;
 let currentProxyUrl = null;
 
-function openLocalPlayer(m3u8Url, title, qualities, backendName) {
+let allAvailableStreams = [];
+
+function openLocalPlayer(m3u8Url, title, qualities, backendName, streams) {
     document.getElementById('local-player-container').classList.remove('hidden');
     document.getElementById('player-title').textContent = title.split('\n')[0];
     currentProxyUrl = m3u8Url;
+    allAvailableStreams = streams || [];
 
     // Ensure video is visible (may have been hidden by error overlay)
     const video = document.getElementById('video-player');
@@ -452,6 +495,13 @@ function openLocalPlayer(m3u8Url, title, qualities, backendName) {
         }
     }
 
+    // Render stream picker if multiple streams available
+    renderStreamPicker(allAvailableStreams, m3u8Url);
+
+    startPlayback(video, m3u8Url);
+}
+
+function startPlayback(video, m3u8Url) {
     const useNative = video.canPlayType('application/vnd.apple.mpegurl');
 
     if (useNative) {
@@ -465,6 +515,65 @@ function openLocalPlayer(m3u8Url, title, qualities, backendName) {
         hlsInstance.attachMedia(video);
         hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => video.play());
     }
+}
+
+function renderStreamPicker(streams, activeUrl) {
+    const picker = document.getElementById('stream-picker');
+    if (!picker) return;
+
+    if (!streams || streams.length <= 1) {
+        picker.classList.add('hidden');
+        return;
+    }
+
+    picker.classList.remove('hidden');
+    picker.innerHTML = '<div class="picker-label">Available Streams</div>';
+
+    streams.forEach((s, idx) => {
+        const btn = document.createElement('button');
+        btn.className = 'stream-option' + (s.proxy_url === activeUrl ? ' active' : '');
+
+        let label = s.source_label || `Stream ${idx + 1}`;
+        let quality = '';
+        if (s.qualities && s.qualities.length > 0) {
+            const best = s.qualities[0];
+            quality = best.resolution || '';
+        }
+
+        btn.innerHTML = `
+            <span class="stream-option-label">${label}</span>
+            <span class="stream-option-meta">${s.backend_name}${quality ? ' · ' + quality : ''}</span>
+        `;
+
+        btn.onclick = () => switchStream(s, streams);
+        picker.appendChild(btn);
+    });
+}
+
+function switchStream(stream, allStreams) {
+    const video = document.getElementById('video-player');
+    currentProxyUrl = stream.proxy_url;
+
+    // Update badges
+    const badgeContainer = document.getElementById('player-badges');
+    badgeContainer.innerHTML = '';
+    if (stream.backend_name) {
+        badgeContainer.innerHTML += `<span class="badge-pill backend-badge">${stream.backend_name}</span>`;
+    }
+    if (stream.qualities && stream.qualities.length > 0) {
+        const best = stream.qualities[0];
+        if (best.resolution) {
+            badgeContainer.innerHTML += `<span class="badge-pill quality-badge">${best.resolution}</span>`;
+        }
+        if (best.bandwidth) {
+            const mbps = (best.bandwidth / 1_000_000).toFixed(1);
+            badgeContainer.innerHTML += `<span class="badge-pill bitrate-badge">${mbps} Mbps</span>`;
+        }
+    }
+
+    renderStreamPicker(allStreams, stream.proxy_url);
+    startPlayback(video, stream.proxy_url);
+    statusLog(`Switched to stream from ${stream.backend_name}`, 'ok');
 }
 
 function closeLocalPlayer() {

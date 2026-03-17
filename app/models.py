@@ -47,6 +47,7 @@ class ResolvedStream(BaseModel):
     headers: dict[str, str] = {}
     cookies: list[dict] = []
     qualities: list[StreamQuality] = []
+    source_label: str | None = None  # e.g. "HD", "Stream 1" — from aggregator sites
 
     def to_stream_info(self):
         """Convert to the legacy StreamInfo format for proxy compatibility."""

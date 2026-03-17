@@ -26,6 +26,15 @@ class StreamBackend(ABC):
         Return None if this backend can't serve it."""
         ...
 
+    async def resolve_streams(self, event: SportEvent) -> list[ResolvedStream]:
+        """Return ALL available streams for an event.
+
+        Aggregator backends override this to return multiple streams.
+        Default implementation wraps resolve_stream() in a list.
+        """
+        stream = await self.resolve_stream(event)
+        return [stream] if stream else []
+
     async def health_check(self) -> bool:
         """Optional: verify backend is reachable."""
         return True

@@ -126,6 +126,72 @@ async def resolve_stream(body: ResolveRequest, request: Request):
     }
 
 
+@router.post("/resolve-all")
+async def resolve_all_streams(body: ResolveRequest, request: Request):
+    """Resolve ALL available streams from ALL backends in parallel.
+
+    Returns multiple streams (deduped, sorted by quality) so the
+    frontend can offer a stream picker. Auto-plays the best one.
+    """
+    backend_registry = request.app.state.backend_registry
+
+    event = SportEvent(
+        event_id=body.event_id,
+        title=body.title,
+        category=body.category,
+        home_team=body.home_team,
+        away_team=body.away_team,
+        home_logo=body.home_logo,
+        away_logo=body.away_logo,
+    )
+
+    streams, statuses = await backend_registry.resolve_all(event)
+
+    if not streams:
+        error_details = [f"{s.backend_name}: {s.error}" for s in statuses if not s.success]
+        summary = "; ".join(error_details) if error_details else "No backends available"
+        return {
+            "error": f"No streams found. {summary}",
+            "backend_errors": [
+                {"backend": s.backend_name, "error": s.error, "latency_ms": s.latency_ms}
+                for s in statuses if not s.success
+            ],
+        }
+
+    # Create proxy sessions for each stream
+    results = []
+    public_host = settings.get_public_host(request.url.port)
+    for stream in streams:
+        session_id = str(uuid.uuid4())
+        sessions[session_id] = StreamInfo(
+            m3u8_url=stream.m3u8_url,
+            headers=stream.headers,
+            cookies=stream.cookies,
+        )
+        results.append({
+            "session_id": session_id,
+            "proxy_url": f"http://{public_host}/proxy/playlist/{session_id}",
+            "original_m3u8": stream.m3u8_url,
+            "backend_id": stream.backend_id,
+            "backend_name": stream.backend_name,
+            "source_label": stream.source_label,
+            "qualities": [q.model_dump(mode="json") for q in stream.qualities],
+        })
+
+    return {
+        "streams": results,
+        "backend_statuses": [
+            {
+                "backend": s.backend_name,
+                "success": s.success,
+                "error": s.error,
+                "latency_ms": s.latency_ms,
+            }
+            for s in statuses
+        ],
+    }
+
+
 @router.post("/extract")
 async def extract_stream(body: ExtractRequest, request: Request):
     """Legacy extract endpoint — still works for direct URL extraction."""

@@ -1,5 +1,6 @@
 """Backend registry: manages backends and resolves streams with priority ordering."""
 
+import asyncio
 import logging
 import time
 from typing import Optional
@@ -125,3 +126,65 @@ class BackendRegistry:
                 ))
                 continue
         return None, attempts
+
+    async def resolve_all(self, event: SportEvent) -> tuple[list[ResolvedStream], list[BackendStatus]]:
+        """Collect ALL available streams from ALL backends in parallel.
+
+        Aggregator backends may return multiple streams each. Results are
+        sorted: highest quality first (by bandwidth), deduped by m3u8 URL.
+        """
+        all_streams: list[ResolvedStream] = []
+        all_statuses: list[BackendStatus] = []
+
+        async def _try_backend(backend: StreamBackend):
+            t0 = time.monotonic()
+            try:
+                streams = await backend.resolve_streams(event)
+                latency = int((time.monotonic() - t0) * 1000)
+                if streams:
+                    all_streams.extend(streams)
+                    all_statuses.append(BackendStatus(
+                        backend_id=backend.backend_id,
+                        backend_name=backend.display_name,
+                        success=True,
+                        stream=streams[0],
+                        latency_ms=latency,
+                    ))
+                else:
+                    all_statuses.append(BackendStatus(
+                        backend_id=backend.backend_id,
+                        backend_name=backend.display_name,
+                        success=False,
+                        error="No streams found",
+                        latency_ms=latency,
+                    ))
+            except Exception as e:
+                latency = int((time.monotonic() - t0) * 1000)
+                logger.warning(f"Backend {backend.backend_id} failed: {e}")
+                all_statuses.append(BackendStatus(
+                    backend_id=backend.backend_id,
+                    backend_name=backend.display_name,
+                    success=False,
+                    error=str(e),
+                    latency_ms=latency,
+                ))
+
+        await asyncio.gather(*[_try_backend(b) for b in self.get_backends()])
+
+        # Deduplicate by m3u8 URL (different sites often serve the same stream)
+        seen_urls: set[str] = set()
+        unique_streams: list[ResolvedStream] = []
+        for stream in all_streams:
+            if stream.m3u8_url not in seen_urls:
+                seen_urls.add(stream.m3u8_url)
+                unique_streams.append(stream)
+
+        # Sort: highest quality first
+        def sort_key(s: ResolvedStream) -> int:
+            if s.qualities:
+                return max(q.bandwidth or 0 for q in s.qualities)
+            return 0
+
+        unique_streams.sort(key=sort_key, reverse=True)
+
+        return unique_streams, all_statuses

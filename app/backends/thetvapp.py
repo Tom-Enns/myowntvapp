@@ -2,8 +2,6 @@
 
 import asyncio
 import logging
-import re
-from base64 import b64decode
 from urllib.parse import urljoin
 
 import aiohttp
@@ -11,6 +9,7 @@ from bs4 import BeautifulSoup
 
 from app.models import SportEvent, ResolvedStream
 from app.backends.base import StreamBackend
+from app.resolvers.registry import get_resolver_registry
 from app.services.quality import parse_stream_qualities
 
 logger = logging.getLogger(__name__)
@@ -33,15 +32,8 @@ class TheTVAppBackend(StreamBackend):
         return "TheTVApp.to"
 
     async def resolve_stream(self, event: SportEvent) -> ResolvedStream | None:
-        """Resolve a stream for the given event.
-
-        If the event was created by the TheTVApp schedule provider, the event_id
-        contains the slug needed to construct the URL. Otherwise, we search thetvapp.to
-        for a matching event by team names.
-        """
         url = self._get_event_url(event)
         if not url:
-            # Try to find a matching event on thetvapp.to by searching the category
             url = await self._search_for_event(event)
 
         if not url:
@@ -59,7 +51,6 @@ class TheTVAppBackend(StreamBackend):
             return False
 
     def _get_event_url(self, event: SportEvent) -> str | None:
-        """Get URL if this event was created by the TheTVApp schedule provider."""
         if event.event_id.startswith("thetvapp:"):
             slug = event.event_id.removeprefix("thetvapp:")
             if event.category == "tv":
@@ -68,7 +59,6 @@ class TheTVAppBackend(StreamBackend):
         return None
 
     async def _search_for_event(self, event: SportEvent) -> str | None:
-        """Search thetvapp.to for an event matching by team names."""
         if not event.home_team or not event.away_team:
             return None
 
@@ -96,7 +86,6 @@ class TheTVAppBackend(StreamBackend):
         return None
 
     async def _extract_stream(self, url: str) -> ResolvedStream | None:
-        """Extract HLS stream URL from a thetvapp.to event page."""
         headers = {"User-Agent": _UA}
 
         try:
@@ -142,8 +131,25 @@ class TheTVAppBackend(StreamBackend):
             if stream_name_div and stream_name_div.get("name"):
                 return await self._extract_tv_channel(session, page_url, page_cookies, stream_name_div["name"])
 
-            # iframe-based sports stream
-            return await self._extract_iframe_stream(session, soup, page_url)
+            # iframe-based sports stream — use resolver registry for auto-detection
+            iframe_url = _find_iframe_url(soup, page_url)
+            if not iframe_url:
+                raise RuntimeError("No stream embed iframe found on page")
+
+            resolver_registry = get_resolver_registry()
+            result = await resolver_registry.resolve(iframe_url, page_url, session)
+            if not result:
+                raise RuntimeError("No HLS stream found. The page may not have an active stream right now.")
+
+            qualities = await parse_stream_qualities(result.m3u8_url, result.headers)
+
+            return ResolvedStream(
+                backend_id=self.backend_id,
+                backend_name=self.display_name,
+                m3u8_url=result.m3u8_url,
+                headers=result.headers,
+                qualities=qualities,
+            )
 
     async def _extract_tv_channel(self, session: aiohttp.ClientSession,
                                    page_url: str, cookies: dict, stream_name: str) -> ResolvedStream:
@@ -171,80 +177,20 @@ class TheTVAppBackend(StreamBackend):
             qualities=qualities,
         )
 
-    async def _extract_iframe_stream(self, session: aiohttp.ClientSession,
-                                      soup: BeautifulSoup, page_url: str) -> ResolvedStream:
-        iframe_url = None
-        for iframe in soup.find_all("iframe"):
-            src = iframe.get("src", "")
-            if src and "embed" in src.lower():
-                iframe_url = src if src.startswith("http") else urljoin(page_url, src)
-                break
 
-        if not iframe_url:
-            for iframe in soup.find_all("iframe"):
-                src = iframe.get("src", "")
-                if src and src.startswith("http") and "about:" not in src:
-                    iframe_url = src
-                    break
+def _find_iframe_url(soup: BeautifulSoup, page_url: str) -> str | None:
+    """Find the embed iframe URL on a page."""
+    for iframe in soup.find_all("iframe"):
+        src = iframe.get("src", "")
+        if src and "embed" in src.lower():
+            return src if src.startswith("http") else urljoin(page_url, src)
 
-        if not iframe_url:
-            raise RuntimeError("No stream embed iframe found on page")
+    for iframe in soup.find_all("iframe"):
+        src = iframe.get("src", "")
+        if src and src.startswith("http") and "about:" not in src:
+            return src
 
-        async with session.get(iframe_url, headers={"User-Agent": _UA, "Referer": page_url},
-                               timeout=aiohttp.ClientTimeout(total=15)) as resp:
-            if resp.status != 200:
-                raise RuntimeError(f"Iframe returned {resp.status}")
-            iframe_html = await resp.text()
-
-        stream_url = self._find_stream_in_html(iframe_html)
-        if not stream_url:
-            raise RuntimeError("No HLS stream found. The page may not have an active stream right now.")
-
-        origin = iframe_url.split("/")[0] + "//" + iframe_url.split("/")[2]
-        stream_headers = {"Referer": iframe_url, "Origin": origin}
-        qualities = await parse_stream_qualities(stream_url, stream_headers)
-
-        return ResolvedStream(
-            backend_id=self.backend_id,
-            backend_name=self.display_name,
-            m3u8_url=stream_url,
-            headers=stream_headers,
-            qualities=qualities,
-        )
-
-    def _find_stream_in_html(self, html: str) -> str | None:
-        """Parse HTML/JS to find HLS stream URLs."""
-        # Strategy 1: atob('...') pattern (base64-encoded URL)
-        atob_matches = re.findall(r"atob\(['\"]([A-Za-z0-9+/=]+)['\"]\)", html)
-        for match in atob_matches:
-            try:
-                decoded = b64decode(match).decode("utf-8", errors="ignore")
-                if decoded.startswith("http"):
-                    return decoded
-            except Exception:
-                continue
-
-        # Strategy 2: source: 'https://...' pattern
-        src_match = re.search(r"source:\s*['\"]?(https?://[^'\"\s,]+)", html)
-        if src_match:
-            return src_match.group(1)
-
-        # Strategy 3: Direct .m3u8 URL in JS
-        m3u8_match = re.search(r"""['"](https?://[^'"]*\.m3u8[^'"]*)['"]""", html)
-        if m3u8_match:
-            return m3u8_match.group(1)
-
-        # Strategy 4: URL containing 'playlist' and 'load'
-        playlist_match = re.search(r"""['"](https?://[^'"]*playlist[^'"]*load[^'"]*)['"]""", html)
-        if playlist_match:
-            return playlist_match.group(1)
-
-        # Strategy 5: URL containing '/playlist/'
-        playlist_match2 = re.search(r"""['"](https?://[^'"]*/playlist/[^'"]*)['"]""", html)
-        if playlist_match2:
-            return playlist_match2.group(1)
-
-        return None
+    return None
 
 
 def create_backend() -> TheTVAppBackend:
