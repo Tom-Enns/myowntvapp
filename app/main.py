@@ -11,6 +11,7 @@ from app.services.logos import LogoService
 from app.backends.registry import BackendRegistry
 from app.backends.thetvapp import create_backend as create_thetvapp_backend
 from app.backends.thetvapplink import create_backend as create_thetvapplink_backend
+from app.backends.nhlbite import create_backend as create_nhlbite_backend
 from app.schedule.registry import ScheduleRegistry
 from app.schedule.thetvapp_schedule import create_provider as create_thetvapp_schedule
 from app.schedule.sportsdb import create_provider as create_sportsdb_schedule
@@ -45,6 +46,7 @@ async def lifespan(app: FastAPI):
     backend_registry = BackendRegistry()
     backend_registry.register(create_thetvapp_backend())
     backend_registry.register(create_thetvapplink_backend())
+    backend_registry.register(create_nhlbite_backend())
     backend_registry.set_priority(settings.BACKEND_PRIORITY)
     app.state.backend_registry = backend_registry
 
