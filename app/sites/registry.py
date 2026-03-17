@@ -88,7 +88,16 @@ def get_site_registry() -> SiteRegistry:
         # Register site-specific handlers
         from app.sites.thetvapp import TheTVAppSite
         _registry.register(TheTVAppSite())
-        # Future: register more sites here
-        # from app.sites.streameast import StreamEastSite
-        # _registry.register(StreamEastSite())
+        from app.sites.streameast import StreamEastSite
+        _registry.register(StreamEastSite())
+        from app.sites.sportsurge import SportsurgeSite
+        _registry.register(SportsurgeSite())
+        from app.sites.streambtw import StreamBTWSite
+        _registry.register(StreamBTWSite())
+        from app.sites.topstreams import TopStreamsSite
+        _registry.register(TopStreamsSite())
+        from app.sites.nflwebhunter import NFLWebHunterSite
+        _registry.register(NFLWebHunterSite())
+        from app.sites.totalsportek import TotalSportekSite
+        _registry.register(TotalSportekSite())
     return _registry
