@@ -452,7 +452,6 @@ function openLocalPlayer(m3u8Url, title, qualities, backendName) {
         }
     }
 
-    const video = document.getElementById('video-player');
     const useNative = video.canPlayType('application/vnd.apple.mpegurl');
 
     if (useNative) {

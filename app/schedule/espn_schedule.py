@@ -1,7 +1,7 @@
-"""ESPN API schedule provider — fetches game schedules for NBA, MLB, and NFL.
+"""ESPN API schedule provider — fetches game schedules for NBA, MLB, NFL, and NHL.
 
 Uses ESPN's public (no auth) scoreboard API, which provides a consistent
-format across all sports with logos, scores, and game status.
+format across all sports with logos, scores, game status, and period detail.
 """
 
 import logging
@@ -21,6 +21,7 @@ CATEGORY_MAP = {
     "nba": "basketball/nba",
     "mlb": "baseball/mlb",
     "nfl": "football/nfl",
+    "nhl": "hockey/nhl",
 }
 
 

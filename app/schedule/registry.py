@@ -69,8 +69,8 @@ class ScheduleRegistry:
             supports = category.lower() in [c.lower() for c in cats]
             if not supports:
                 continue
-            # "Specialized" = supports 3 or fewer categories
-            if len(cats) <= 3:
+            # "Specialized" = supports fewer categories than general providers
+            if len(cats) <= 4:
                 specialized.append(provider)
             else:
                 general.append(provider)

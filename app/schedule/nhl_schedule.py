@@ -99,7 +99,20 @@ class NHLSchedule(ScheduleProvider):
             if game_state in ("LIVE", "CRIT"):
                 away_score = away.get("score", 0)
                 home_score = home.get("score", 0)
-                title = f"{away_name} ({away_score}) @ {home_name} ({home_score}) — LIVE"
+                period_desc = game.get("periodDescriptor", {})
+                period_num = period_desc.get("number", 0)
+                period_type = period_desc.get("periodType", "REG")
+                if period_type == "OT":
+                    period_label = "OT"
+                elif period_num == 1:
+                    period_label = "1st"
+                elif period_num == 2:
+                    period_label = "2nd"
+                elif period_num == 3:
+                    period_label = "3rd"
+                else:
+                    period_label = f"{period_num}th"
+                title = f"{away_name} ({away_score}) @ {home_name} ({home_score}) — LIVE ({period_label})"
             elif game_state in ("OFF", "FINAL"):
                 away_score = away.get("score", 0)
                 home_score = home.get("score", 0)

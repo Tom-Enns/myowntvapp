@@ -10,10 +10,10 @@ from app.services.transcoder import TranscoderService
 from app.services.logos import LogoService
 from app.backends.registry import BackendRegistry
 from app.backends.thetvapp import create_backend as create_thetvapp_backend
+from app.backends.thetvapplink import create_backend as create_thetvapplink_backend
 from app.schedule.registry import ScheduleRegistry
 from app.schedule.thetvapp_schedule import create_provider as create_thetvapp_schedule
 from app.schedule.sportsdb import create_provider as create_sportsdb_schedule
-from app.schedule.nhl_schedule import create_provider as create_nhl_schedule
 from app.schedule.espn_schedule import create_provider as create_espn_schedule
 from app.routes import ui, api, proxy
 
@@ -36,8 +36,6 @@ async def lifespan(app: FastAPI):
     schedule_registry.register(thetvapp_schedule)
     sportsdb_schedule = create_sportsdb_schedule(app.state.logos)
     schedule_registry.register(sportsdb_schedule)
-    nhl_schedule = create_nhl_schedule()
-    schedule_registry.register(nhl_schedule)
     espn_schedule = create_espn_schedule()
     schedule_registry.register(espn_schedule)
     schedule_registry.set_primary(settings.SCHEDULE_PROVIDER)
@@ -46,6 +44,7 @@ async def lifespan(app: FastAPI):
     # Backend registry
     backend_registry = BackendRegistry()
     backend_registry.register(create_thetvapp_backend())
+    backend_registry.register(create_thetvapplink_backend())
     backend_registry.set_priority(settings.BACKEND_PRIORITY)
     app.state.backend_registry = backend_registry
 

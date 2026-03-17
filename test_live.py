@@ -181,7 +181,7 @@ async def check_espn():
     print(f"\n{BOLD}ESPN API (site.api.espn.com){RESET}")
 
     provider = ESPNSchedule()
-    for cat in ["nba", "mlb", "nfl"]:
+    for cat in ["nba", "mlb", "nfl", "nhl"]:
         try:
             events = await provider.get_events(cat)
             if events:
@@ -215,21 +215,29 @@ async def check_espn():
 
 async def check_backend():
     from app.backends.thetvapp import TheTVAppBackend
+    from app.backends.thetvapplink import TheTVAppLinkBackend
 
-    print(f"\n{BOLD}TheTVApp Backend (health check){RESET}")
+    print(f"\n{BOLD}Stream Backends (health check){RESET}")
 
     backend = TheTVAppBackend()
     healthy = await backend.health_check()
     check(healthy, "thetvapp.to is reachable", "thetvapp.to is NOT reachable (blocked or down)")
 
+    backend2 = TheTVAppLinkBackend()
+    healthy2 = await backend2.health_check()
+    check(healthy2, "thetvapp.link is reachable", "thetvapp.link is NOT reachable")
+
 
 async def check_registry_integration():
     from app.schedule.registry import ScheduleRegistry
-    from app.schedule.nhl_schedule import NHLSchedule
     from app.schedule.espn_schedule import ESPNSchedule
     from app.schedule.thetvapp_schedule import TheTVAppSchedule
     from app.schedule.sportsdb import TheSportsDBSchedule
+    from app.backends.registry import BackendRegistry
+    from app.backends.thetvapp import TheTVAppBackend
+    from app.backends.thetvapplink import TheTVAppLinkBackend
     from app.services.logos import LogoService
+    from app.models import SportEvent
 
     print(f"\n{BOLD}Full Registry Integration{RESET}")
 
@@ -237,18 +245,15 @@ async def check_registry_integration():
     reg = ScheduleRegistry()
     reg.register(TheTVAppSchedule(logos))
     reg.register(TheSportsDBSchedule(logos))
-    reg.register(NHLSchedule())
     reg.register(ESPNSchedule())
     reg.set_primary("thetvapp")
 
     result = await reg.get_events_with_status("nhl")
     check(len(result.events) > 0, f"NHL via registry: {len(result.events)} events from '{result.provider_id}'",
           "No NHL events from registry")
-
-    # NHL should come from the specialized provider
-    check(result.provider_id == "nhl",
-          "NHL provider was used (specialized priority works)",
-          f"Expected 'nhl' provider but got '{result.provider_id}'")
+    check(result.provider_id == "espn",
+          "ESPN provider used for NHL",
+          f"Expected 'espn' but got '{result.provider_id}'")
 
     if result.errors:
         for err in result.errors:
@@ -278,6 +283,36 @@ async def check_registry_integration():
               "")
     else:
         warn("NFL: no events (off-season)")
+
+    # Stream resolution — try both backends on a live game
+    print(f"\n{BOLD}Stream Resolution (both backends){RESET}")
+
+    # Find a live event from any sport to test against
+    test_event = None
+    for cat in ["nba", "nhl", "mlb"]:
+        cat_result = await reg.get_events_with_status(cat)
+        for ev in cat_result.events:
+            if ev.home_team and ev.away_team:
+                test_event = ev
+                break
+        if test_event:
+            break
+
+    if not test_event:
+        warn("No events with team names to test stream resolution")
+    else:
+        info(f"Testing: {test_event.away_team} @ {test_event.home_team} ({test_event.category})")
+
+        for BackendClass, name in [(TheTVAppBackend, "thetvapp.to"), (TheTVAppLinkBackend, "thetvapp.link")]:
+            backend = BackendClass()
+            try:
+                stream = await backend.resolve_stream(test_event)
+                if stream:
+                    check(True, f"{name}: stream found ({stream.m3u8_url[:50]}...)", "")
+                else:
+                    warn(f"{name}: no stream (event may not be live yet)")
+            except Exception as e:
+                warn(f"{name}: {e}")
 
 
 # ---------------------------------------------------------------
