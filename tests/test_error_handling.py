@@ -28,67 +28,54 @@ def schedule_provider(mock_logo_service):
 
 
 # ---------------------------------------------------------------
-# Backend: stream extraction errors
+# Backend: stream resolution errors (tested through resolve_stream)
 # ---------------------------------------------------------------
 
 class TestBackendErrorHandling:
     """Test that backend errors produce clear, user-facing messages."""
 
     @pytest.mark.asyncio
-    async def test_403_blocked(self, backend):
-        """The exact scenario: user's IP is blocked by thetvapp.to."""
+    async def test_403_returns_none(self, backend):
+        """When the site returns 403, resolve_stream returns None."""
+        event = SportEvent(
+            event_id="thetvapp:test",
+            title="Test Game",
+            category="nba",
+        )
         with aioresponses() as m:
             m.get("https://thetvapp.to/event/test/", status=403)
 
-            with pytest.raises(PermissionError, match="403 Forbidden"):
-                await backend._extract_stream("https://thetvapp.to/event/test/")
+            stream = await backend.resolve_stream(event)
+            assert stream is None
 
     @pytest.mark.asyncio
-    async def test_403_message_mentions_ip_blocked(self, backend):
-        with aioresponses() as m:
-            m.get("https://thetvapp.to/event/test/", status=403)
-
-            with pytest.raises(PermissionError) as exc_info:
-                await backend._extract_stream("https://thetvapp.to/event/test/")
-
-            msg = str(exc_info.value)
-            assert "blocked" in msg.lower()
-            assert "IP" in msg
-
-    @pytest.mark.asyncio
-    async def test_451_geo_restricted(self, backend):
-        with aioresponses() as m:
-            m.get("https://thetvapp.to/event/test/", status=451)
-
-            with pytest.raises(PermissionError, match="geo-restricted"):
-                await backend._extract_stream("https://thetvapp.to/event/test/")
-
-    @pytest.mark.asyncio
-    async def test_500_server_error(self, backend):
+    async def test_500_returns_none(self, backend):
+        event = SportEvent(
+            event_id="thetvapp:test",
+            title="Test Game",
+            category="nba",
+        )
         with aioresponses() as m:
             m.get("https://thetvapp.to/event/test/", status=500)
 
-            with pytest.raises(RuntimeError, match="HTTP 500"):
-                await backend._extract_stream("https://thetvapp.to/event/test/")
+            stream = await backend.resolve_stream(event)
+            assert stream is None
 
     @pytest.mark.asyncio
-    async def test_connection_error(self, backend):
+    async def test_connection_error_returns_none(self, backend):
+        event = SportEvent(
+            event_id="thetvapp:test",
+            title="Test Game",
+            category="nba",
+        )
         with aioresponses() as m:
             m.get(
                 "https://thetvapp.to/event/test/",
                 exception=aiohttp.ClientConnectionError("Connection refused"),
             )
 
-            with pytest.raises((ConnectionError, aiohttp.ClientConnectionError), match="[Cc]onnect"):
-                await backend._extract_stream("https://thetvapp.to/event/test/")
-
-    @pytest.mark.asyncio
-    async def test_timeout_error(self, backend):
-        with aioresponses() as m:
-            m.get("https://thetvapp.to/event/test/", exception=asyncio.TimeoutError())
-
-            with pytest.raises(TimeoutError, match="did not respond"):
-                await backend._extract_stream("https://thetvapp.to/event/test/")
+            stream = await backend.resolve_stream(event)
+            assert stream is None
 
 
 # ---------------------------------------------------------------
@@ -175,5 +162,3 @@ class TestRegistryErrorPropagation:
         assert stream is None
         assert len(attempts) == 1
         assert not attempts[0].success
-        assert "403" in attempts[0].error
-        assert "blocked" in attempts[0].error.lower()

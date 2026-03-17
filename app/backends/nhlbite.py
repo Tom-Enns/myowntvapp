@@ -7,8 +7,8 @@ Each link goes to an external site with an iframe embed.
 This backend:
 1. Finds the game page by matching home team name to the URL slug
 2. Scrapes the stream table for all external stream links
-3. For each link, follows it to the embed page and uses the resolver
-   registry to auto-detect and extract the m3u8 URL
+3. For each link, delegates to the site registry to auto-detect
+   and extract the m3u8 URL (site-specific handling)
 """
 
 import asyncio
@@ -19,9 +19,9 @@ from urllib.parse import urljoin
 import aiohttp
 from bs4 import BeautifulSoup
 
-from app.models import SportEvent, ResolvedStream
+from app.models import SportEvent, ResolvedStream, StreamLink
 from app.backends.base import StreamBackend
-from app.resolvers.registry import get_resolver_registry
+from app.sites.registry import get_site_registry
 from app.services.quality import parse_stream_qualities
 
 logger = logging.getLogger(__name__)
@@ -73,6 +73,37 @@ class NHLBiteBackend(StreamBackend):
 
         logger.info(f"[nhlbite] Found {len(stream_links)} stream sources, resolving...")
         return await self._resolve_stream_links(stream_links, game_url)
+
+    async def discover_links(self, event: SportEvent) -> list[StreamLink]:
+        """Discover all external stream links for an NHL event."""
+        if event.category.lower() != "nhl":
+            return []
+        if not event.home_team:
+            return []
+
+        game_url = await self._find_game_page(event)
+        if not game_url:
+            return []
+
+        logger.info(f"[nhlbite] Found game page: {game_url}")
+        raw_links = await self._scrape_stream_table(game_url)
+        if not raw_links:
+            return []
+
+        logger.info(f"[nhlbite] Discovered {len(raw_links)} stream links")
+        links = []
+        for link in raw_links:
+            label = link["name"]
+            if link["channel"]:
+                label += f" ({link['channel']})"
+            links.append(StreamLink(
+                url=link["url"],
+                backend_id=self.backend_id,
+                backend_name=self.display_name,
+                source_label=label,
+                referer=game_url,
+            ))
+        return links
 
     async def health_check(self) -> bool:
         try:
@@ -170,8 +201,8 @@ class NHLBiteBackend(StreamBackend):
     async def _resolve_stream_links(
         self, stream_links: list[dict], referer: str
     ) -> list[ResolvedStream]:
-        """Resolve external stream links in parallel using the resolver registry."""
-        resolver_registry = get_resolver_registry()
+        """Resolve external stream links in parallel using the site registry."""
+        site_registry = get_site_registry()
         results: list[ResolvedStream] = []
         semaphore = asyncio.Semaphore(MAX_PARALLEL_RESOLVES)
 
@@ -179,7 +210,7 @@ class NHLBiteBackend(StreamBackend):
             async with semaphore:
                 try:
                     stream = await self._resolve_single_link(
-                        link, referer, resolver_registry
+                        link, referer, site_registry
                     )
                     if stream:
                         results.append(stream)
@@ -192,54 +223,17 @@ class NHLBiteBackend(StreamBackend):
         return results
 
     async def _resolve_single_link(
-        self, link: dict, referer: str, resolver_registry
+        self, link: dict, referer: str, site_registry
     ) -> ResolvedStream | None:
-        """Follow an external stream link and resolve the m3u8."""
+        """Follow an external stream link and resolve via the site registry."""
         url = link["url"]
         label = link["name"]
         if link["channel"]:
             label += f" ({link['channel']})"
 
         async with aiohttp.ClientSession(headers={"User-Agent": _UA}) as session:
-            # Step 1: Fetch the external stream page
-            try:
-                async with session.get(
-                    url,
-                    headers={"Referer": referer},
-                    timeout=aiohttp.ClientTimeout(total=15),
-                ) as resp:
-                    if resp.status != 200:
-                        return None
-                    page_html = await resp.text()
-                    page_url = str(resp.url)
-            except Exception as e:
-                logger.debug(f"[nhlbite] Cannot fetch {url}: {e}")
-                return None
-
-            # Step 2: Find iframe on the page
-            soup = BeautifulSoup(page_html, "html.parser")
-            iframe_url = _find_iframe_url(soup, page_url)
-
-            if not iframe_url:
-                # Some pages might have the stream directly in JS
-                from app.resolvers.generic import find_stream_in_html
-                m3u8_url = find_stream_in_html(page_html)
-                if m3u8_url:
-                    origin = page_url.split("/")[0] + "//" + page_url.split("/")[2]
-                    headers = {"Referer": page_url, "Origin": origin}
-                    qualities = await parse_stream_qualities(m3u8_url, headers)
-                    return ResolvedStream(
-                        backend_id=self.backend_id,
-                        backend_name=self.display_name,
-                        m3u8_url=m3u8_url,
-                        headers=headers,
-                        qualities=qualities,
-                        source_label=label,
-                    )
-                return None
-
-            # Step 3: Use resolver registry to extract m3u8 from iframe
-            result = await resolver_registry.resolve(iframe_url, page_url, session)
+            # Delegate to site registry — it auto-detects the right site handler
+            result = await site_registry.resolve(url, referer, session)
             if not result:
                 return None
 
@@ -253,36 +247,6 @@ class NHLBiteBackend(StreamBackend):
                 qualities=qualities,
                 source_label=label,
             )
-
-
-def _find_iframe_url(soup: BeautifulSoup, page_url: str) -> str | None:
-    """Find an embed iframe URL on a page."""
-    # Check for cx-iframe first (common on thetvapp-style sites)
-    cx = soup.find("iframe", id="cx-iframe")
-    if cx and cx.get("src") and cx["src"].startswith("http"):
-        return cx["src"]
-
-    for iframe in soup.find_all("iframe"):
-        src = iframe.get("src", "")
-        if src and ("embed" in src.lower() or "stream" in src.lower()):
-            return src if src.startswith("http") else urljoin(page_url, src)
-
-    for iframe in soup.find_all("iframe"):
-        src = iframe.get("src", "")
-        if src and src.startswith("http") and "about:" not in src:
-            return src
-
-    # Some sites inject iframe via JS: look for cx-iframe src assignment
-    script_match = re.search(
-        r"""getElementById\(['"]cx-iframe['"]\)\.src\s*=\s*['"]([^'"]+)['"]""",
-        str(soup)
-    )
-    if script_match:
-        iframe_src = script_match.group(1)
-        if iframe_src.startswith("http"):
-            return iframe_src
-
-    return None
 
 
 def _team_to_slug(team_name: str) -> str | None:

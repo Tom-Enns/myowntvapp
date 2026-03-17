@@ -59,6 +59,19 @@ class ResolvedStream(BaseModel):
         )
 
 
+class StreamLink(BaseModel):
+    """A discovered link to a stream page — not yet resolved.
+
+    Backends produce these during the discovery phase. The orchestrator
+    deduplicates by URL, then resolves each unique link through the site registry.
+    """
+    url: str                        # Page URL to resolve via site registry
+    backend_id: str                 # Which backend discovered this link
+    backend_name: str
+    source_label: str | None = None  # e.g. "StreamEast (HD)" from aggregators
+    referer: str | None = None       # Referer to pass to site handler
+
+
 class BackendStatus(BaseModel):
     """Result of a single backend's attempt to resolve a stream."""
     backend_id: str

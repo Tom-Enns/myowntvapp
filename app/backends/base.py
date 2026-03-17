@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 
-from app.models import SportEvent, ResolvedStream
+from app.models import SportEvent, ResolvedStream, StreamLink
 
 
 class StreamBackend(ABC):
@@ -34,6 +34,18 @@ class StreamBackend(ABC):
         """
         stream = await self.resolve_stream(event)
         return [stream] if stream else []
+
+    async def discover_links(self, event: SportEvent) -> list[StreamLink]:
+        """Discover stream page URLs for an event without resolving them.
+
+        This is the first phase of the two-phase resolution flow:
+          1. discover_links() — all backends find URLs in parallel
+          2. Orchestrator deduplicates URLs, resolves via site registry
+
+        Direct backends return a single link (the game page URL).
+        Aggregators return many links (external stream site URLs).
+        """
+        return []
 
     async def health_check(self) -> bool:
         """Optional: verify backend is reachable."""

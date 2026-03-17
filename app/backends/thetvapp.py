@@ -1,15 +1,18 @@
-"""TheTVApp.to stream backend — resolves streams from thetvapp.to event pages."""
+"""TheTVApp.to stream backend — resolves streams from thetvapp.to event pages.
 
-import asyncio
+Uses the shared site layer for stream extraction. This backend handles
+game-finding (URL construction, category page searching) and delegates
+the actual stream extraction to the TheTVApp site handler.
+"""
+
 import logging
-from urllib.parse import urljoin
 
 import aiohttp
 from bs4 import BeautifulSoup
 
-from app.models import SportEvent, ResolvedStream
+from app.models import SportEvent, ResolvedStream, StreamLink
 from app.backends.base import StreamBackend
-from app.resolvers.registry import get_resolver_registry
+from app.sites.registry import get_site_registry
 from app.services.quality import parse_stream_qualities
 
 logger = logging.getLogger(__name__)
@@ -40,7 +43,34 @@ class TheTVAppBackend(StreamBackend):
             return None
 
         logger.info(f"Extracting stream from: {url}")
-        return await self._extract_stream(url)
+
+        async with aiohttp.ClientSession(headers={"User-Agent": _UA}) as session:
+            site_registry = get_site_registry()
+            result = await site_registry.resolve(url, None, session)
+            if not result:
+                return None
+
+            qualities = await parse_stream_qualities(result.m3u8_url, result.headers)
+
+            return ResolvedStream(
+                backend_id=self.backend_id,
+                backend_name=self.display_name,
+                m3u8_url=result.m3u8_url,
+                headers=result.headers,
+                qualities=qualities,
+            )
+
+    async def discover_links(self, event: SportEvent) -> list[StreamLink]:
+        url = self._get_event_url(event)
+        if not url:
+            url = await self._search_for_event(event)
+        if not url:
+            return []
+        return [StreamLink(
+            url=url,
+            backend_id=self.backend_id,
+            backend_name=self.display_name,
+        )]
 
     async def health_check(self) -> bool:
         try:
@@ -84,113 +114,6 @@ class TheTVAppBackend(StreamBackend):
             logger.warning(f"Search failed: {e}")
 
         return None
-
-    async def _extract_stream(self, url: str) -> ResolvedStream | None:
-        headers = {"User-Agent": _UA}
-
-        try:
-            session = aiohttp.ClientSession(headers=headers)
-        except Exception as e:
-            raise RuntimeError(f"Failed to create HTTP session: {e}")
-
-        async with session:
-            try:
-                resp = await session.get(url, timeout=aiohttp.ClientTimeout(total=15))
-            except (aiohttp.ClientConnectorError, aiohttp.ClientConnectionError):
-                raise ConnectionError(
-                    "Cannot connect to TheTVApp.to — the site may be down or blocked by your network."
-                )
-            except asyncio.TimeoutError:
-                raise TimeoutError(
-                    "TheTVApp.to did not respond in time. The site may be overloaded."
-                )
-
-            async with resp:
-                if resp.status == 403:
-                    raise PermissionError(
-                        "TheTVApp.to returned 403 Forbidden. "
-                        "Your IP address appears to be blocked by this provider."
-                    )
-                if resp.status == 451:
-                    raise PermissionError(
-                        "TheTVApp.to returned 451 Unavailable For Legal Reasons. "
-                        "This content may be geo-restricted in your region."
-                    )
-                if resp.status != 200:
-                    raise RuntimeError(
-                        f"TheTVApp.to returned HTTP {resp.status}. The site may be experiencing issues."
-                    )
-                page_html = await resp.text()
-                page_url = str(resp.url)
-                page_cookies = {k: v.value for k, v in resp.cookies.items()}
-
-            soup = BeautifulSoup(page_html, "html.parser")
-
-            # TV channel (JWPlayer with token endpoint)
-            stream_name_div = soup.find(id="stream_name")
-            if stream_name_div and stream_name_div.get("name"):
-                return await self._extract_tv_channel(session, page_url, page_cookies, stream_name_div["name"])
-
-            # iframe-based sports stream — use resolver registry for auto-detection
-            iframe_url = _find_iframe_url(soup, page_url)
-            if not iframe_url:
-                raise RuntimeError("No stream embed iframe found on page")
-
-            resolver_registry = get_resolver_registry()
-            result = await resolver_registry.resolve(iframe_url, page_url, session)
-            if not result:
-                raise RuntimeError("No HLS stream found. The page may not have an active stream right now.")
-
-            qualities = await parse_stream_qualities(result.m3u8_url, result.headers)
-
-            return ResolvedStream(
-                backend_id=self.backend_id,
-                backend_name=self.display_name,
-                m3u8_url=result.m3u8_url,
-                headers=result.headers,
-                qualities=qualities,
-            )
-
-    async def _extract_tv_channel(self, session: aiohttp.ClientSession,
-                                   page_url: str, cookies: dict, stream_name: str) -> ResolvedStream:
-        origin = page_url.split("/")[0] + "//" + page_url.split("/")[2]
-        token_url = f"{origin}/token/{stream_name}"
-
-        async with session.get(token_url, headers={"User-Agent": _UA, "Referer": page_url},
-                               cookies=cookies, timeout=aiohttp.ClientTimeout(total=10)) as resp:
-            if resp.status != 200:
-                raise RuntimeError(f"Token endpoint returned {resp.status}")
-            data = await resp.json()
-
-        m3u8_url = data.get("url")
-        if not m3u8_url:
-            raise RuntimeError("Token endpoint did not return a stream URL")
-
-        stream_headers = {"Referer": page_url, "Origin": origin}
-        qualities = await parse_stream_qualities(m3u8_url, stream_headers)
-
-        return ResolvedStream(
-            backend_id=self.backend_id,
-            backend_name=self.display_name,
-            m3u8_url=m3u8_url,
-            headers=stream_headers,
-            qualities=qualities,
-        )
-
-
-def _find_iframe_url(soup: BeautifulSoup, page_url: str) -> str | None:
-    """Find the embed iframe URL on a page."""
-    for iframe in soup.find_all("iframe"):
-        src = iframe.get("src", "")
-        if src and "embed" in src.lower():
-            return src if src.startswith("http") else urljoin(page_url, src)
-
-    for iframe in soup.find_all("iframe"):
-        src = iframe.get("src", "")
-        if src and src.startswith("http") and "about:" not in src:
-            return src
-
-    return None
 
 
 def create_backend() -> TheTVAppBackend:
